@@ -25,6 +25,7 @@ struct ArgParser {
     Argument* arguments;
     char* program_name;
     char* description;
+    bool help_requested;  // New flag to track if help was requested
 };
 
 /* internal utility functions */
@@ -33,7 +34,6 @@ static Argument* find_argument(ArgParser* parser, char short_name) {
     while (current) {
         if (current->short_name == short_name)
             return current;
-
         current = current->next;
     }
     return NULL;
@@ -44,7 +44,6 @@ static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_
     while (current) {
         if (current->long_name && strcmp(current->long_name, long_name) == 0)
             return current;
-
         current = current->next;
     }
     return NULL;
@@ -92,22 +91,18 @@ static void append_to_list(Argument* arg, void* value) {
         *head = new_node;
     else {
         ListNode* current = *head;
-
         while (current->next)
             current = current->next;
-
         current->next = new_node;
     }
 }
 
 static int list_length(ListNode* head) {
     int count = 0;
-
     while (head) {
         count++;
         head = head->next;
     }
-
     return count;
 }
 
@@ -118,22 +113,29 @@ ArgParser* argparse_new(const char* description) {
 
     parser->arguments = NULL;
     parser->program_name = NULL;
-
     parser->description = description ? strdup(description) : NULL;
+    parser->help_requested = false;  // Initialize help flag
+
+    // Automatically add help argument
+    argparse_add_argument(parser, 'h', "help", ARG_BOOL, "Show this help message and exit", false, NULL);
+
     return parser;
 }
 
 void argparse_add_argument(ArgParser* parser, char short_name, const char* long_name,
     ArgType type, const char* help, bool required, void* default_value) {
+    // Don't add duplicate help arguments
+    if (short_name == 'h' || (long_name && strcmp(long_name, "help") == 0)) {
+        return; // Help argument is already added automatically
+    }
+
     Argument* arg = malloc(sizeof(Argument));
     if (!arg) return;
 
     arg->short_name = short_name;
     arg->long_name = long_name ? strdup(long_name) : NULL;
-
     arg->help = help ? strdup(help) : NULL;
     arg->type = type;
-
     arg->required = required;
     arg->set = false;
     arg->next = NULL;
@@ -219,11 +221,24 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
     if (!parser || argc < 1 || !argv) return;
     parser->program_name = strdup(argv[0]);
 
+    // Check if no arguments were provided (only program name)
+    if (argc == 1) {
+        argparse_print_help(parser);
+        exit(0);
+    }
+
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-') {
             if (argv[i][1] == '-') {
                 /* long option */
                 char* option = argv[i] + 2;
+
+                // Check for help option first
+                if (strcmp(option, "help") == 0) {
+                    parser->help_requested = true;
+                    argparse_print_help(parser);
+                    exit(0);
+                }
 
                 char* equals = strchr(option, '=');
                 Argument* arg = NULL;
@@ -235,7 +250,6 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
                 }
                 else {
                     arg = find_argument_by_long_name(parser, option);
-
                     if (arg) {
                         if (arg->type == ARG_BOOL)
                             parse_single_value(arg, "");
@@ -252,8 +266,15 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
             else {
                 /* short option */
                 char short_name = argv[i][1];
-                Argument* arg = find_argument(parser, short_name);
 
+                // Check for help option first
+                if (short_name == 'h') {
+                    parser->help_requested = true;
+                    argparse_print_help(parser);
+                    exit(0);
+                }
+
+                Argument* arg = find_argument(parser, short_name);
                 if (!arg) {
                     fprintf(stderr, "Unknown option: -%c\n", short_name);
                     exit(1);
@@ -280,10 +301,8 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
     while (current) {
         if (current->required && !current->set) {
             fprintf(stderr, "Required argument ");
-
             if (current->long_name) fprintf(stderr, "--%s", current->long_name);
             else fprintf(stderr, "-%c", current->short_name);
-
             fprintf(stderr, " not provided\n");
             exit(1);
         }
