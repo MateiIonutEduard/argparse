@@ -18,7 +18,9 @@ struct Argument {
     void* value;
     bool required;
     bool set;
-    bool is_list;  // Track if this is a list argument
+
+    /* track if this is a list argument */
+    bool is_list;
     Argument* next;
 };
 
@@ -51,7 +53,9 @@ static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_
 }
 
 static bool is_list_type(ArgType type) {
-    return type == ARG_INT_LIST || type == ARG_DOUBLE_LIST || type == ARG_STRING_LIST;
+    return type == ARG_INT_LIST 
+        || type == ARG_DOUBLE_LIST 
+        || type == ARG_STRING_LIST;
 }
 
 static void* create_default_value(ArgType type) {
@@ -111,11 +115,12 @@ static int list_length(ListNode* head) {
     return count;
 }
 
-/* Helper function to parse multiple values for list arguments */
+/* helper function to parse multiple values for list arguments */
 static int parse_list_values(ArgParser* parser, Argument* arg, int current_index, int argc, char** argv) {
     int i = current_index + 1;
+    int values_parsed = 0;
 
-    // Parse all subsequent non-option arguments as list values
+    /* parse all subsequent non-option arguments as list values */
     while (i < argc && argv[i][0] != '-') {
         switch (arg->type) {
         case ARG_INT_LIST: {
@@ -136,14 +141,26 @@ static int parse_list_values(ArgParser* parser, Argument* arg, int current_index
             break;
         }
         default:
-            // Should not happen for list types
+            /* should not happen for list types */
             break;
         }
-        arg->set = true;
+        values_parsed++;
         i++;
     }
 
-    return i - 1; // Return the last index we processed
+    if (values_parsed > 0) {
+        arg->set = true;
+    }
+    else {
+        fprintf(stderr, "List argument ");
+        if (arg->long_name) fprintf(stderr, "--%s", arg->long_name);
+        else fprintf(stderr, "-%c", arg->short_name);
+        fprintf(stderr, " requires at least one value\n");
+        exit(1);
+    }
+
+    /* return the last index we processed */
+    return i - 1;
 }
 
 /* public API implementation */
@@ -156,7 +173,7 @@ ArgParser* argparse_new(const char* description) {
     parser->description = description ? strdup(description) : NULL;
     parser->help_requested = false;
 
-    // Automatically add help argument
+    /* automatically add help argument */
     argparse_add_argument(parser, 'h', "help", ARG_BOOL, "Show this help message and exit", false, NULL);
 
     return parser;
@@ -164,20 +181,23 @@ ArgParser* argparse_new(const char* description) {
 
 void argparse_add_argument(ArgParser* parser, char short_name, const char* long_name,
     ArgType type, const char* help, bool required, void* default_value) {
-    // Don't add duplicate help arguments
-    if (short_name == 'h' || (long_name && strcmp(long_name, "help") == 0)) {
+
+    /* don't add duplicate help arguments */
+    if (short_name == 'h' || (long_name && strcmp(long_name, "help") == 0))
         return;
-    }
 
     Argument* arg = malloc(sizeof(Argument));
     if (!arg) return;
 
     arg->short_name = short_name;
     arg->long_name = long_name ? strdup(long_name) : NULL;
+
     arg->help = help ? strdup(help) : NULL;
     arg->type = type;
+
     arg->required = required;
     arg->set = false;
+
     arg->is_list = is_list_type(type);
     arg->next = NULL;
 
@@ -223,6 +243,11 @@ void argparse_add_list_argument(ArgParser* parser, char short_name, const char* 
 }
 
 static void parse_single_value(Argument* arg, const char* str_val) {
+    /* 
+        list arguments are now handled separately in parse_list_values
+        this function only handles single-value arguments
+    */
+
     switch (arg->type) {
     case ARG_INT:
         *(int*)arg->value = atoi(str_val);
@@ -237,23 +262,13 @@ static void parse_single_value(Argument* arg, const char* str_val) {
     case ARG_BOOL:
         *(bool*)arg->value = true;
         break;
-    case ARG_INT_LIST: {
-        int* val = malloc(sizeof(int));
-        *val = atoi(str_val);
-        append_to_list(arg, val);
+    case ARG_INT_LIST:
+    case ARG_DOUBLE_LIST:
+    case ARG_STRING_LIST:
+        /* these should not reach here - list arguments are handled in parse_list_values */
+        fprintf(stderr, "Internal error: list argument processed in parse_single_value\n");
+        exit(1);
         break;
-    }
-    case ARG_DOUBLE_LIST: {
-        double* val = malloc(sizeof(double));
-        *val = atof(str_val);
-        append_to_list(arg, val);
-        break;
-    }
-    case ARG_STRING_LIST: {
-        char* val = strdup(str_val);
-        append_to_list(arg, val);
-        break;
-    }
     }
     arg->set = true;
 }
@@ -262,7 +277,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
     if (!parser || argc < 1 || !argv) return;
     parser->program_name = strdup(argv[0]);
 
-    // Check if no arguments were provided (only program name)
+    /* check if no arguments were provided (only program name) */
     if (argc == 1) {
         argparse_print_help(parser);
         exit(0);
@@ -274,7 +289,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
                 /* long option */
                 char* option = argv[i] + 2;
 
-                // Check for help option first
+                /* check for help option first */
                 if (strcmp(option, "help") == 0) {
                     parser->help_requested = true;
                     argparse_print_help(parser);
@@ -302,12 +317,11 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
                             parse_single_value(arg, "");
                         }
                         else if (arg->is_list) {
-                            // Handle list arguments with space-separated values
+                            /* handle list arguments with space-separated values */
                             i = parse_list_values(parser, arg, i, argc, argv);
                         }
-                        else if (i + 1 < argc) {
+                        else if (i + 1 < argc)
                             parse_single_value(arg, argv[++i]);
-                        }
                         else {
                             fprintf(stderr, "Option --%s requires a value\n", option);
                             exit(1);
@@ -324,7 +338,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
                 /* short option */
                 char short_name = argv[i][1];
 
-                // Check for help option first
+                /* check for help option first */
                 if (short_name == 'h') {
                     parser->help_requested = true;
                     argparse_print_help(parser);
@@ -341,7 +355,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
                     parse_single_value(arg, "");
                 }
                 else if (arg->is_list) {
-                    // Handle list arguments with space-separated values
+                    /* handle list arguments with space-separated values */
                     i = parse_list_values(parser, arg, i, argc, argv);
                 }
                 else if (i + 1 < argc) {
@@ -499,7 +513,8 @@ void argparse_print_help(ArgParser* parser) {
         case ARG_INT_LIST:
         case ARG_DOUBLE_LIST:
         case ARG_STRING_LIST:
-            printf(" VALUE [VALUE...]");
+            /* updated help format */
+            printf(" VALUE1 VALUE2 ...");
             break;
         default:
             break;
