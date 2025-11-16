@@ -14,7 +14,7 @@ It mimics Python’s `argparse` interface while focusing on performance, simplic
 - 🔒 Type-safe — argument types enforced at compile-time.  
 - ⚡ Fast & minimal — suitable for embedded or low-overhead applications.  
 - 🧠 Python-like interface — expressive and readable API.  
-- ✅ Supports integers, strings, boolean flags, and lists.  
+- ✅ Supports integers, doubles, strings, boolean flags, and lists.  
 - 🎯 Supports default values, required flags, and help text.
 
 ## ⚙️ Setup
