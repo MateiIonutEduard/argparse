@@ -50,11 +50,16 @@ extern "C" {
     /* Return the string value of the parameter for short_name. */
     const char* argparse_get_string(ArgParser* parser, char short_name);
 
-    /* list access functions */
+    /* Return the number of elements in the list for short_name. */
     int argparse_get_list_count(ArgParser* parser, char short_name);
+
+    /* Return a copy of the integer list for short_name. */
     int argparse_get_int_list(ArgParser* parser, char short_name, int** values);
 
+    /* Return a copy of the double list for short_name. */
     int argparse_get_double_list(ArgParser* parser, char short_name, double** values);
+
+    /* Return a copy of the string list for short_name. */
     int argparse_get_string_list(ArgParser* parser, char short_name, char*** values);
 
     /* utility functions */

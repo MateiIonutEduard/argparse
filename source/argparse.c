@@ -4,6 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 
+/* Return a null-terminated duplicate of the string referenced by str. */
 char* ap_strdup(const char* str) {
     if (!str) return NULL;
     size_t len = strlen(str) + 1;
@@ -13,7 +14,7 @@ char* ap_strdup(const char* str) {
     return copy;
 }
 
-/* internal list node structure */
+/* Internal list node structure */
 typedef struct ListNode {
     void* data;
     struct ListNode* next;
