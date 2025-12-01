@@ -4,6 +4,15 @@
 #include <string.h>
 #include <ctype.h>
 
+char* ap_strdup(const char* str) {
+    if (!str) return NULL;
+    size_t len = strlen(str) + 1;
+
+    char* copy = malloc(len);
+    if (copy) memcpy(copy, str, len);
+    return copy;
+}
+
 /* internal list node structure */
 typedef struct ListNode {
     void* data;
