@@ -62,9 +62,13 @@ extern "C" {
     /* Return a copy of the string list for short_name. */
     int argparse_get_string_list(ArgParser* parser, char short_name, char*** values);
 
-    /* utility functions */
+    /* Free the memory of the integer list parameter. */
     void argparse_free_int_list(int** values, int count);
+
+    /* Free the memory of the double list parameter. */
     void argparse_free_double_list(double** values, int count);
+
+    /* Free the memory of the string list parameter. */
     void argparse_free_string_list(char*** values, int count);
 	
 	#ifdef _MSC_VER
