@@ -26,9 +26,11 @@ extern "C" {
     /* Free the memory of the given ArgParser* instance. */
     void argparse_free(ArgParser* parser);
 
-    /* argument management */
+    /* Define parsing for a single command-line argument. */
     void argparse_add_argument(ArgParser* parser, char short_name, const char* long_name,
         ArgType type, const char* help, bool required, void* default_value);
+
+    /* Define parsing for a typed command-line list argument. */
     void argparse_add_list_argument(ArgParser* parser, char short_name, const char* long_name,
         ArgType list_type, const char* help, bool required);
 

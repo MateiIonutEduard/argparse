@@ -23,8 +23,10 @@ typedef struct ListNode {
 struct Argument {
     char short_name;
     char* long_name;
+
     char* help;
     ArgType type;
+
     void* value;
     bool required;
     bool set;
@@ -37,28 +39,34 @@ struct Argument {
 struct ArgParser {
     Argument* arguments;
     char* program_name;
+
     char* description;
     bool help_requested;
 };
 
-/* internal utility functions */
 static Argument* find_argument(ArgParser* parser, char short_name) {
     Argument* current = parser->arguments;
+
     while (current) {
         if (current->short_name == short_name)
             return current;
+
         current = current->next;
     }
+
     return NULL;
 }
 
 static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_name) {
     Argument* current = parser->arguments;
+
     while (current) {
         if (current->long_name && strcmp(current->long_name, long_name) == 0)
             return current;
+
         current = current->next;
     }
+
     return NULL;
 }
 
