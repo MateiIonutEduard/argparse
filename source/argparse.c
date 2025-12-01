@@ -71,27 +71,33 @@ static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_
 }
 
 static bool is_list_type(ArgType type) {
-    return type == ARG_INT_LIST 
-        || type == ARG_DOUBLE_LIST 
-        || type == ARG_STRING_LIST;
+    return ((type == ARG_INT_LIST) 
+        || (type == ARG_DOUBLE_LIST) 
+        || (type == ARG_STRING_LIST));
 }
 
 static void* create_default_value(ArgType type) {
     switch (type) {
     case ARG_INT: {
-        int* val = malloc(sizeof(int));
+        int* val = (int*)malloc(sizeof(int));
+        if (!val) return NULL;
+
         *val = 0;
         return val;
     }
     case ARG_DOUBLE: {
-        double* val = malloc(sizeof(double));
+        double* val = (double*)malloc(sizeof(double));
+        if (!val) return NULL;
+
         *val = 0.0;
         return val;
     }
     case ARG_STRING:
         return NULL;
     case ARG_BOOL: {
-        bool* val = malloc(sizeof(bool));
+        bool* val = (bool*)malloc(sizeof(bool));
+        if (!val) return NULL;
+
         *val = false;
         return val;
     }
@@ -99,6 +105,8 @@ static void* create_default_value(ArgType type) {
     case ARG_DOUBLE_LIST:
     case ARG_STRING_LIST: {
         ListNode** list = malloc(sizeof(ListNode*));
+        if (!list) return NULL;
+
         *list = NULL;
         return list;
     }
@@ -111,6 +119,11 @@ static void append_to_list(Argument* arg, void* value) {
     ListNode** head = (ListNode**)arg->value;
     ListNode* new_node = malloc(sizeof(ListNode));
 
+    if (!new_node) {
+        fprintf(stderr, "Memory allocation failed for list node\n");
+        exit(1);
+    }
+
     new_node->data = value;
     new_node->next = NULL;
 
@@ -118,22 +131,26 @@ static void append_to_list(Argument* arg, void* value) {
         *head = new_node;
     else {
         ListNode* current = *head;
+
         while (current->next)
             current = current->next;
+
         current->next = new_node;
     }
 }
 
 static int list_length(ListNode* head) {
     int count = 0;
+
     while (head) {
         count++;
         head = head->next;
     }
+
     return count;
 }
 
-/* helper function to parse multiple values for list arguments */
+/* Helper function to parse multiple values for list arguments. */
 static int parse_list_values(ArgParser* parser, Argument* arg, int current_index, int argc, char** argv) {
     int i = current_index + 1;
     int values_parsed = 0;
@@ -142,14 +159,16 @@ static int parse_list_values(ArgParser* parser, Argument* arg, int current_index
     while (i < argc && argv[i][0] != '-') {
         switch (arg->type) {
         case ARG_INT_LIST: {
-            int* val = malloc(sizeof(int));
-            *val = atoi(argv[i]);
+            int* val = (int*)malloc(sizeof(int));
+            if(val) *val = atoi(argv[i]);
+
             append_to_list(arg, val);
             break;
         }
         case ARG_DOUBLE_LIST: {
-            double* val = malloc(sizeof(double));
-            *val = atof(argv[i]);
+            double* val = (double*)malloc(sizeof(double));
+            if(val) *val = atof(argv[i]);
+
             append_to_list(arg, val);
             break;
         }
@@ -159,16 +178,16 @@ static int parse_list_values(ArgParser* parser, Argument* arg, int current_index
             break;
         }
         default:
-            /* should not happen for list types */
+            /* unknown list type */
             break;
         }
+
         values_parsed++;
         i++;
     }
 
-    if (values_parsed > 0) {
+    if (values_parsed > 0)
         arg->set = true;
-    }
     else {
         fprintf(stderr, "List argument ");
         if (arg->long_name) fprintf(stderr, "--%s", arg->long_name);
@@ -181,20 +200,55 @@ static int parse_list_values(ArgParser* parser, Argument* arg, int current_index
     return i - 1;
 }
 
-/* public API implementation */
 ArgParser* argparse_new(const char* description) {
-    ArgParser* parser = malloc(sizeof(ArgParser));
+    ArgParser* parser = (ArgParser*)malloc(sizeof(ArgParser));
     if (!parser) return NULL;
 
     parser->arguments = NULL;
     parser->program_name = NULL;
+
     parser->description = description ? strdup(description) : NULL;
     parser->help_requested = false;
 
     /* automatically add help argument */
     argparse_add_argument(parser, 'h', "help", ARG_BOOL, "Show this help message and exit", false, NULL);
-
     return parser;
+}
+
+static void free_argument(Argument* arg) {
+    if (!arg) return;
+
+    free(arg->long_name);
+    free(arg->help);
+
+    switch (arg->type) {
+    case ARG_INT:
+    case ARG_DOUBLE:
+    case ARG_BOOL:
+        free(arg->value);
+        break;
+    case ARG_STRING:
+        if (arg->value) free(arg->value);
+        break;
+    case ARG_INT_LIST:
+    case ARG_DOUBLE_LIST:
+    case ARG_STRING_LIST: {
+        ListNode* head = *(ListNode**)arg->value;
+
+        while (head) {
+            ListNode* next = head->next;
+            free(head->data);
+
+            free(head);
+            head = next;
+        }
+
+        free(arg->value);
+        break;
+    }
+    }
+
+    free(arg);
 }
 
 void argparse_add_argument(ArgParser* parser, char short_name, const char* long_name,
@@ -223,18 +277,18 @@ void argparse_add_argument(ArgParser* parser, char short_name, const char* long_
         switch (type) {
         case ARG_INT:
             arg->value = malloc(sizeof(int));
-            *(int*)arg->value = *(int*)default_value;
+            if (arg->value) *(int*)arg->value = *(int*)default_value;
             break;
         case ARG_DOUBLE:
             arg->value = malloc(sizeof(double));
-            *(double*)arg->value = *(double*)default_value;
+            if (arg->value) *(double*)arg->value = *(double*)default_value;
             break;
         case ARG_STRING:
             arg->value = strdup((char*)default_value);
             break;
         case ARG_BOOL:
             arg->value = malloc(sizeof(bool));
-            *(bool*)arg->value = *(bool*)default_value;
+            if (arg->value) *(bool*)arg->value = *(bool*)default_value;
             break;
         default:
             arg->value = create_default_value(type);
@@ -243,6 +297,12 @@ void argparse_add_argument(ArgParser* parser, char short_name, const char* long_
     }
     else {
         arg->value = create_default_value(type);
+    }
+
+    /* Check if memory allocation for value failed */
+    if (!arg->value && type != ARG_STRING) {
+        free_argument(arg);
+        return;
     }
 
     /* add to linked list */
@@ -443,12 +503,19 @@ int argparse_get_int_list(ArgParser* parser, char short_name, int** values) {
     int count = list_length(head);
     if (count == 0) return 0;
 
-    *values = malloc(count * sizeof(int));
+    *values = (int*)malloc(count * sizeof(int));
     ListNode* current = head;
+
+    if (!*values) {
+        fprintf(stderr, "Memory allocation failed for int list\n");
+        return 0;
+    }
+
     for (int i = 0; i < count; i++) {
         (*values)[i] = *(int*)current->data;
         current = current->next;
     }
+
     return count;
 }
 
@@ -460,12 +527,19 @@ int argparse_get_double_list(ArgParser* parser, char short_name, double** values
     int count = list_length(head);
     if (count == 0) return 0;
 
-    *values = malloc(count * sizeof(double));
+    *values = (double*)malloc(count * sizeof(double));
     ListNode* current = head;
+
+    if (!*values) {
+        fprintf(stderr, "Memory allocation failed for double list\n");
+        return 0;
+    }
+
     for (int i = 0; i < count; i++) {
         (*values)[i] = *(double*)current->data;
         current = current->next;
     }
+
     return count;
 }
 
@@ -477,12 +551,19 @@ int argparse_get_string_list(ArgParser* parser, char short_name, char*** values)
     int count = list_length(head);
     if (count == 0) return 0;
 
-    *values = malloc(count * sizeof(char*));
+    *values = (char**)malloc(count * sizeof(char*));
     ListNode* current = head;
+
+    if (!*values) {
+        fprintf(stderr, "Memory allocation failed for string list\n");
+        return 0;
+    }
+
     for (int i = 0; i < count; i++) {
         (*values)[i] = strdup((char*)current->data);
         current = current->next;
     }
+
     return count;
 }
 
@@ -540,48 +621,16 @@ void argparse_print_help(ArgParser* parser) {
 
         printf("\n    %s", current->help ? current->help : "");
         if (current->required) printf(" [required]");
+
         printf("\n");
         current = current->next;
     }
 }
 
-static void free_argument(Argument* arg) {
-    if (!arg) return;
-
-    free(arg->long_name);
-    free(arg->help);
-
-    switch (arg->type) {
-    case ARG_INT:
-    case ARG_DOUBLE:
-    case ARG_BOOL:
-        free(arg->value);
-        break;
-    case ARG_STRING:
-        if (arg->value) free(arg->value);
-        break;
-    case ARG_INT_LIST:
-    case ARG_DOUBLE_LIST:
-    case ARG_STRING_LIST: {
-        ListNode* head = *(ListNode**)arg->value;
-        while (head) {
-            ListNode* next = head->next;
-            free(head->data);
-            free(head);
-            head = next;
-        }
-        free(arg->value);
-        break;
-    }
-    }
-
-    free(arg);
-}
-
 void argparse_free(ArgParser* parser) {
     if (!parser) return;
-
     Argument* current = parser->arguments;
+
     while (current) {
         Argument* next = current->next;
         free_argument(current);

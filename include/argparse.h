@@ -19,6 +19,7 @@ extern "C" {
 
     typedef struct Argument Argument;
     typedef struct ArgParser ArgParser;
+    typedef enum ArgType ArgType;
 
     /* Create a new ArgParser instance, allocate memory, and set a short description. */
     ArgParser* argparse_new(const char* description);
