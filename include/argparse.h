@@ -20,8 +20,10 @@ extern "C" {
     typedef struct Argument Argument;
     typedef struct ArgParser ArgParser;
 
-    /* library initialization */
+    /* Create a new ArgParser instance, allocate memory, and set a short description. */
     ArgParser* argparse_new(const char* description);
+
+    /* Free the memory of the given ArgParser* instance. */
     void argparse_free(ArgParser* parser);
 
     /* argument management */
