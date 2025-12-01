@@ -38,11 +38,16 @@ extern "C" {
     /* Display the help message and exit. */
     void argparse_print_help(ArgParser* parser);
 
-    /* value access functions */
+    /* Return the boolean value of short_name from the parsed command-line arguments. */
     bool argparse_get_bool(ArgParser* parser, char short_name);
+
+    /* Return the integer value of the parameter for short_name. */
     int argparse_get_int(ArgParser* parser, char short_name);
 
+    /* Return the double value of the parameter for short_name. */
     double argparse_get_double(ArgParser* parser, char short_name);
+
+    /* Return the string value of the parameter for short_name. */
     const char* argparse_get_string(ArgParser* parser, char short_name);
 
     /* list access functions */
