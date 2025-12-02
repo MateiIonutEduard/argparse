@@ -14,6 +14,12 @@ char* ap_strdup(const char* str) {
     return copy;
 }
 
+static bool startsWith(const char* pre, const char* str)
+{
+    size_t lenpre = strlen(pre), lenstr = strlen(str);
+    return lenstr < lenpre ? false : memcmp(pre, str, lenpre) == 0;
+}
+
 /* Internal list node structure */
 typedef struct ListNode {
     void* data;
@@ -21,7 +27,7 @@ typedef struct ListNode {
 } ListNode;
 
 struct Argument {
-    char short_name;
+    char* short_name;
     char* long_name;
 
     char* help;
@@ -44,11 +50,11 @@ struct ArgParser {
     bool help_requested;
 };
 
-static Argument* find_argument(ArgParser* parser, char short_name) {
+static Argument* find_argument(ArgParser* parser, char* short_name) {
     Argument* current = parser->arguments;
 
     while (current) {
-        if (current->short_name == short_name)
+        if (current->short_name && strstr(current->short_name, short_name))
             return current;
 
         current = current->next;
@@ -61,7 +67,7 @@ static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_
     Argument* current = parser->arguments;
 
     while (current) {
-        if (current->long_name && strcmp(current->long_name, long_name) == 0)
+        if (current->long_name && strstr(current->long_name, long_name) == 0)
             return current;
 
         current = current->next;
@@ -71,8 +77,8 @@ static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_
 }
 
 static bool is_list_type(ArgType type) {
-    return ((type == ARG_INT_LIST) 
-        || (type == ARG_DOUBLE_LIST) 
+    return ((type == ARG_INT_LIST)
+        || (type == ARG_DOUBLE_LIST)
         || (type == ARG_STRING_LIST));
 }
 
@@ -156,18 +162,18 @@ static int parse_list_values(ArgParser* parser, Argument* arg, int current_index
     int values_parsed = 0;
 
     /* parse all subsequent non-option arguments as list values */
-    while (i < argc && argv[i][0] != '-') {
+    while (i < argc/* && argv[i][0] != '-'*/) {
         switch (arg->type) {
         case ARG_INT_LIST: {
             int* val = (int*)malloc(sizeof(int));
-            if(val) *val = atoi(argv[i]);
+            if (val) *val = atoi(argv[i]);
 
             append_to_list(arg, val);
             break;
         }
         case ARG_DOUBLE_LIST: {
             double* val = (double*)malloc(sizeof(double));
-            if(val) *val = atof(argv[i]);
+            if (val) *val = atof(argv[i]);
 
             append_to_list(arg, val);
             break;
@@ -191,8 +197,8 @@ static int parse_list_values(ArgParser* parser, Argument* arg, int current_index
     else {
         fprintf(stderr, "List argument ");
 
-        if (arg->long_name) fprintf(stderr, "--%s", arg->long_name);
-        else fprintf(stderr, "-%c", arg->short_name);
+        if (arg->long_name) fprintf(stderr, "%s", arg->long_name);
+        else if(arg->short_name) fprintf(stderr, "%s", arg->short_name);
 
         fprintf(stderr, " requires at least one value\n");
         exit(1);
@@ -213,7 +219,7 @@ ArgParser* argparse_new(const char* description) {
     parser->help_requested = false;
 
     /* automatically add help argument */
-    argparse_add_argument(parser, 'h', "help", ARG_BOOL, 
+    argparse_add_argument(parser, "h", "help", ARG_BOOL,
         "Show this help message and exit", false, NULL);
     return parser;
 }
@@ -254,17 +260,16 @@ static void free_argument(Argument* arg) {
     free(arg);
 }
 
-void argparse_add_argument(ArgParser* parser, char short_name, const char* long_name,
+void argparse_add_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType type, const char* help, bool required, void* default_value) {
-
     /* don't add duplicate help arguments */
-    if (short_name == 'h' || (long_name && strcmp(long_name, "help") == 0))
+    if ((short_name && strstr(short_name, "h")) || (long_name && strstr(long_name, "help")))
         return;
-
+    
     Argument* arg = (Argument*)malloc(sizeof(Argument));
     if (!arg) return;
 
-    arg->short_name = short_name;
+    arg->short_name = short_name ? strdup(short_name) : NULL;
     arg->long_name = long_name ? strdup(long_name) : NULL;
 
     arg->help = help ? strdup(help) : NULL;
@@ -306,7 +311,7 @@ void argparse_add_argument(ArgParser* parser, char short_name, const char* long_
         free_argument(arg);
         return;
     }
-
+    
     /* add to linked list */
     if (!parser->arguments)
         parser->arguments = arg;
@@ -317,20 +322,19 @@ void argparse_add_argument(ArgParser* parser, char short_name, const char* long_
     }
 }
 
-void argparse_add_list_argument(ArgParser* parser, char short_name, const char* long_name,
+void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType list_type, const char* help, bool required) {
     argparse_add_argument(parser, short_name, long_name, list_type, help, required, NULL);
 }
 
 static void parse_single_value(Argument* arg, const char* str_val) {
-    /* 
+    /*
         list arguments are now handled separately in parse_list_values
         this function only handles single-value arguments
     */
-
     switch (arg->type) {
     case ARG_INT:
-        *(int*)arg->value = atoi(str_val);
+        *(int*)arg->value = atoi(str_val); 
         break;
     case ARG_DOUBLE:
         *(double*)arg->value = atof(str_val);
@@ -355,113 +359,70 @@ static void parse_single_value(Argument* arg, const char* str_val) {
 
 void argparse_parse(ArgParser* parser, int argc, char** argv) {
     if (!parser || argc < 1 || !argv) return;
+
+    if (parser->program_name) free(parser->program_name);
     parser->program_name = strdup(argv[0]);
 
-    /* check if no arguments were provided (only program name) */
+    /* check if no arguments were provided */
     if (argc == 1) {
         argparse_print_help(parser);
         exit(0);
     }
 
     for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-') {
-            if (argv[i][1] == '-') {
-                /* long option */
-                char* option = argv[i] + 2;
+        /* try to find the argument */
+        Argument* arg = find_argument(parser, argv[i]);
+        
+        /* if not found by short name, try by long name */
+        if (!arg) arg = find_argument_by_long_name(parser, argv[i]);
 
-                /* check for help option first */
-                if (strcmp(option, "help") == 0) {
-                    parser->help_requested = true;
-                    argparse_print_help(parser);
-                    exit(0);
-                }
+        /* handle help argument */
+        if (arg && ((arg->short_name && strstr(arg->short_name, "h")) ||
+            (arg->long_name && strstr(arg->long_name, "help")))) {
+            parser->help_requested = true;
+            argparse_print_help(parser);
+            exit(0);
+        }
 
-                char* equals = strchr(option, '=');
-                Argument* arg = NULL;
-
-                if (equals) {
-                    *equals = '\0';
-                    arg = find_argument_by_long_name(parser, option);
-
-                    if (arg) {
-                        if (arg->is_list) {
-                            fprintf(stderr, "List argument --%s cannot use '=' syntax\n", option);
-                            exit(1);
-                        }
-
-                        parse_single_value(arg, equals + 1);
-                    }
-                }
+        if (arg) {
+            /* found the argument, process it */
+            if (arg->type == ARG_BOOL) {
+                parse_single_value(arg, "");
+            }
+            else if (arg->is_list) {
+                /* handle list arguments with space-separated values */
+                i = parse_list_values(parser, arg, i, argc, argv);
+            }
+            else if (i + 1 < argc) {
+                /* check if next argument is not another option */
+                if (argv[i + 1][0] != '-')
+                    parse_single_value(arg, argv[++i]);
                 else {
-                    arg = find_argument_by_long_name(parser, option);
-
-                    if (arg) {
-                        if (arg->type == ARG_BOOL)
-                            parse_single_value(arg, "");
-                        else if (arg->is_list)
-                            /* handle list arguments with space-separated values */
-                            i = parse_list_values(parser, arg, i, argc, argv);
-                        else if (i + 1 < argc)
-                            parse_single_value(arg, argv[++i]);
-                        else {
-                            fprintf(stderr, "Option --%s requires a value\n", option);
-                            exit(1);
-                        }
-                    }
-                }
-
-                if (!arg) {
-                    fprintf(stderr, "Unknown option: --%s\n", option);
+                    fprintf(stderr, "Option %s requires a value\n",
+                        arg->short_name ? arg->short_name : arg->long_name);
                     exit(1);
                 }
             }
             else {
-                /* short option */
-                char short_name = argv[i][1];
-
-                /* check for help option first */
-                if (short_name == 'h') {
-                    parser->help_requested = true;
-                    argparse_print_help(parser);
-                    exit(0);
-                }
-
-                Argument* arg = find_argument(parser, short_name);
-
-                if (!arg) {
-                    fprintf(stderr, "Unknown option: -%c\n", short_name);
-                    exit(1);
-                }
-
-                if (arg->type == ARG_BOOL)
-                    parse_single_value(arg, "");
-                else if (arg->is_list)
-                    /* handle list arguments with space-separated values */
-                    i = parse_list_values(parser, arg, i, argc, argv);
-                else if (i + 1 < argc)
-                    parse_single_value(arg, argv[++i]);
-                else {
-                    fprintf(stderr, "Option -%c requires a value\n", short_name);
-                    exit(1);
-                }
+                fprintf(stderr, "Option %s requires a value\n",
+                    arg->short_name ? arg->short_name : arg->long_name);
+                exit(1);
             }
         }
         else {
-            fprintf(stderr, "Unexpected positional argument: %s\n", argv[i]);
+            /* Argument not found at all */
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
             exit(1);
         }
     }
 
     /* validate required arguments */
     Argument* current = parser->arguments;
-
     while (current) {
         if (current->required && !current->set) {
             fprintf(stderr, "Required argument ");
-
-            if (current->long_name) fprintf(stderr, "--%s", current->long_name);
-            else fprintf(stderr, "-%c", current->short_name);
-
+            if (current->short_name) fprintf(stderr, "%s", current->short_name);
+            else if (current->long_name) fprintf(stderr, "%s", current->long_name);
             fprintf(stderr, " not provided\n");
             exit(1);
         }
@@ -470,28 +431,28 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
 }
 
 /* value access implementations */
-bool argparse_get_bool(ArgParser* parser, char short_name) {
+bool argparse_get_bool(ArgParser* parser, char* short_name) {
     Argument* arg = find_argument(parser, short_name);
     return arg && arg->set ? *(bool*)arg->value : false;
 }
 
-int argparse_get_int(ArgParser* parser, char short_name) {
+int argparse_get_int(ArgParser* parser, char* short_name) {
     Argument* arg = find_argument(parser, short_name);
     return arg && arg->set ? *(int*)arg->value : 0;
 }
 
-double argparse_get_double(ArgParser* parser, char short_name) {
+double argparse_get_double(ArgParser* parser, char* short_name) {
     Argument* arg = find_argument(parser, short_name);
     return arg && arg->set ? *(double*)arg->value : 0.0;
 }
 
-const char* argparse_get_string(ArgParser* parser, char short_name) {
+const char* argparse_get_string(ArgParser* parser, char* short_name) {
     Argument* arg = find_argument(parser, short_name);
     return arg && arg->set ? (const char*)arg->value : NULL;
 }
 
 /* list access implementations */
-int argparse_get_list_count(ArgParser* parser, char short_name) {
+int argparse_get_list_count(ArgParser* parser, char* short_name) {
     Argument* arg = find_argument(parser, short_name);
     if (!arg || !arg->set) return 0;
 
@@ -499,7 +460,7 @@ int argparse_get_list_count(ArgParser* parser, char short_name) {
     return list_length(head);
 }
 
-int argparse_get_int_list(ArgParser* parser, char short_name, int** values) {
+int argparse_get_int_list(ArgParser* parser, char* short_name, int** values) {
     Argument* arg = find_argument(parser, short_name);
     if (!arg || !arg->set || arg->type != ARG_INT_LIST) return 0;
     ListNode* head = *(ListNode**)arg->value;
@@ -523,7 +484,7 @@ int argparse_get_int_list(ArgParser* parser, char short_name, int** values) {
     return count;
 }
 
-int argparse_get_double_list(ArgParser* parser, char short_name, double** values) {
+int argparse_get_double_list(ArgParser* parser, char* short_name, double** values) {
     Argument* arg = find_argument(parser, short_name);
     if (!arg || !arg->set || arg->type != ARG_DOUBLE_LIST) return 0;
 
@@ -547,7 +508,7 @@ int argparse_get_double_list(ArgParser* parser, char short_name, double** values
     return count;
 }
 
-int argparse_get_string_list(ArgParser* parser, char short_name, char*** values) {
+int argparse_get_string_list(ArgParser* parser, char* short_name, char*** values) {
     Argument* arg = find_argument(parser, short_name);
     if (!arg || !arg->set || arg->type != ARG_STRING_LIST) return 0;
 
@@ -602,12 +563,12 @@ void argparse_print_help(ArgParser* parser) {
 
     while (current) {
         printf("  ");
-        if (current->short_name) 
-            printf("-%c", current->short_name);
+        if (current->short_name)
+            printf("%s", current->short_name);
 
         if (current->long_name) {
             if (current->short_name) printf(", ");
-            printf("--%s", current->long_name);
+            printf("%s", current->long_name);
         }
 
         switch (current->type) {
