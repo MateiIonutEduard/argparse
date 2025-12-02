@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
 
         /* program name is stored elsewhere */
         printf("Example: %s --numbers 10 20 30 40 --average --verbose\n",
-            argparse_get_string(parser, "-p"));
+            argv[0]);
     }
 
     /* clean up */
