@@ -5,19 +5,13 @@
 #include <ctype.h>
 
 /* Return a null-terminated duplicate of the string referenced by str. */
-char* ap_strdup(const char* str) {
+static char* ap_strdup(const char* str) {
     if (!str) return NULL;
     size_t len = strlen(str) + 1;
 
     char* copy = (char*)malloc(len);
     if (copy) memcpy(copy, str, len);
     return copy;
-}
-
-static bool startsWith(const char* pre, const char* str)
-{
-    size_t lenpre = strlen(pre), lenstr = strlen(str);
-    return lenstr < lenpre ? false : memcmp(pre, str, lenpre) == 0;
 }
 
 /* Internal list node structure */
@@ -50,17 +44,35 @@ struct ArgParser {
     bool help_requested;
 };
 
-static Argument* find_argument(ArgParser* parser, char* short_name) {
+static Argument* find_argument(ArgParser* parser, char* name) {
     Argument* current = parser->arguments;
 
     while (current) {
-        if (current->short_name && strstr(current->short_name, short_name))
+        if ((current->short_name && strstr(current->short_name, name)) || (current->short_name && strstr(current->long_name, name)))
             return current;
 
         current = current->next;
     }
 
     return NULL;
+}
+
+static bool is_argument(ArgParser* parser, const char* str) {
+    if (!parser || !str || str[0] == '\0')
+        return false;
+
+    /* check all registered arguments */
+    Argument* current = parser->arguments;
+
+    while (current) {
+        /* check short name or long name */
+        if (current->short_name && strcmp(str, current->short_name) == 0) return true;
+        if (current->long_name && strcmp(str, current->long_name) == 0) return true;
+
+        current = current->next;
+    }
+
+    return false;
 }
 
 static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_name) {
@@ -161,8 +173,8 @@ static int parse_list_values(ArgParser* parser, Argument* arg, int current_index
     int i = current_index + 1;
     int values_parsed = 0;
 
-    /* parse all subsequent non-option arguments as list values */
-    while (i < argc/* && argv[i][0] != '-'*/) {
+    /* parse all subsequent values until we hit another registered argument */
+    while (i < argc && !is_argument(parser, argv[i])) {
         switch (arg->type) {
         case ARG_INT_LIST: {
             int* val = (int*)malloc(sizeof(int));
@@ -196,10 +208,8 @@ static int parse_list_values(ArgParser* parser, Argument* arg, int current_index
         arg->set = true;
     else {
         fprintf(stderr, "List argument ");
-
         if (arg->long_name) fprintf(stderr, "%s", arg->long_name);
-        else if(arg->short_name) fprintf(stderr, "%s", arg->short_name);
-
+        else if (arg->short_name) fprintf(stderr, "%s", arg->short_name);
         fprintf(stderr, " requires at least one value\n");
         exit(1);
     }
@@ -370,98 +380,118 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
     }
 
     for (int i = 1; i < argc; i++) {
-        /* try to find the argument */
-        Argument* arg = find_argument(parser, argv[i]);
-        
-        /* if not found by short name, try by long name */
-        if (!arg) arg = find_argument_by_long_name(parser, argv[i]);
+        const char* current_arg = argv[i];
 
-        /* handle help argument */
-        if (arg && ((arg->short_name && strstr(arg->short_name, "h")) ||
-            (arg->long_name && strstr(arg->long_name, "help")))) {
-            parser->help_requested = true;
-            argparse_print_help(parser);
-            exit(0);
-        }
+        /* check if this is a registered argument */
+        if (is_argument(parser, current_arg)) {
+            Argument* arg = find_argument(parser, (char*)current_arg);
+            if (!arg) arg = find_argument_by_long_name(parser, current_arg);
 
-        if (arg) {
+            if (!arg) {
+                /* should not happen since is_argument() returned true */
+                fprintf(stderr, "Internal error: Argument not found\n");
+                exit(1);
+            }
+
+            /* handle help argument */
+            if ((arg->short_name && strstr(arg->short_name, "h")) ||
+                (arg->long_name && strstr(arg->long_name, "help"))) {
+                parser->help_requested = true;
+                argparse_print_help(parser);
+                exit(0);
+            }
+
             /* found the argument, process it */
             if (arg->type == ARG_BOOL) {
                 parse_single_value(arg, "");
             }
-            else if (arg->is_list) {
+            else if (arg->is_list)
                 /* handle list arguments with space-separated values */
                 i = parse_list_values(parser, arg, i, argc, argv);
-            }
             else if (i + 1 < argc) {
-                /* check if next argument is not another option */
-                if (argv[i + 1][0] != '-')
+                /* check if next token is NOT a registered argument */
+                if (!is_argument(parser, argv[i + 1]))
+                    /* next token is a value */
                     parse_single_value(arg, argv[++i]);
                 else {
-                    fprintf(stderr, "Option %s requires a value\n",
-                        arg->short_name ? arg->short_name : arg->long_name);
+                    /* next token is another argument */
+                    fprintf(stderr, "Option ");
+
+                    if (arg->short_name) fprintf(stderr, "%s", arg->short_name);
+                    else if (arg->long_name) fprintf(stderr, "%s", arg->long_name);
+
+                    fprintf(stderr, " requires a value\n");
                     exit(1);
                 }
             }
             else {
-                fprintf(stderr, "Option %s requires a value\n",
-                    arg->short_name ? arg->short_name : arg->long_name);
+                /* no more arguments, but this one needs a value */
+                fprintf(stderr, "Option ");
+
+                if (arg->short_name) fprintf(stderr, "%s", arg->short_name);
+                else if (arg->long_name) fprintf(stderr, "%s", arg->long_name);
+
+                fprintf(stderr, " requires a value\n");
                 exit(1);
             }
         }
         else {
-            /* Argument not found at all */
-            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            /* not a registered argument - it's a value without preceding option */
+            fprintf(stderr, "Unexpected value: %s (did you forget an option?)\n", current_arg);
             exit(1);
         }
     }
 
     /* validate required arguments */
     Argument* current = parser->arguments;
+
     while (current) {
         if (current->required && !current->set) {
             fprintf(stderr, "Required argument ");
+
             if (current->short_name) fprintf(stderr, "%s", current->short_name);
             else if (current->long_name) fprintf(stderr, "%s", current->long_name);
+
             fprintf(stderr, " not provided\n");
             exit(1);
         }
+
         current = current->next;
     }
 }
 
 /* value access implementations */
-bool argparse_get_bool(ArgParser* parser, char* short_name) {
-    Argument* arg = find_argument(parser, short_name);
+bool argparse_get_bool(ArgParser* parser, char* name) {
+    Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(bool*)arg->value : false;
 }
 
-int argparse_get_int(ArgParser* parser, char* short_name) {
-    Argument* arg = find_argument(parser, short_name);
+int argparse_get_int(ArgParser* parser, char* name) {
+    Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(int*)arg->value : 0;
 }
 
-double argparse_get_double(ArgParser* parser, char* short_name) {
-    Argument* arg = find_argument(parser, short_name);
+double argparse_get_double(ArgParser* parser, char* name) {
+    Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(double*)arg->value : 0.0;
 }
 
-const char* argparse_get_string(ArgParser* parser, char* short_name) {
-    Argument* arg = find_argument(parser, short_name);
+const char* argparse_get_string(ArgParser* parser, char* name) {
+    Argument* arg = find_argument(parser, name);
     return arg && arg->set ? (const char*)arg->value : NULL;
 }
 
 /* list access implementations */
-int argparse_get_list_count(ArgParser* parser, char* short_name) {
-    Argument* arg = find_argument(parser, short_name);
+int argparse_get_list_count(ArgParser* parser, char* name) {
+    Argument* arg = find_argument(parser, name);
     if (!arg || !arg->set) return 0;
 
     ListNode* head = *(ListNode**)arg->value;
     return list_length(head);
 }
 
-int argparse_get_int_list(ArgParser* parser, char* short_name, int** values) {
-    Argument* arg = find_argument(parser, short_name);
+int argparse_get_int_list(ArgParser* parser, char* name, int** values) {
+    Argument* arg = find_argument(parser, name);
     if (!arg || !arg->set || arg->type != ARG_INT_LIST) return 0;
     ListNode* head = *(ListNode**)arg->value;
 
@@ -472,7 +502,7 @@ int argparse_get_int_list(ArgParser* parser, char* short_name, int** values) {
     ListNode* current = head;
 
     if (!*values) {
-        fprintf(stderr, "Memory allocation failed for int list\n");
+        fprintf(stderr, "Memory allocation failed for int list.\n");
         return 0;
     }
 
@@ -484,8 +514,8 @@ int argparse_get_int_list(ArgParser* parser, char* short_name, int** values) {
     return count;
 }
 
-int argparse_get_double_list(ArgParser* parser, char* short_name, double** values) {
-    Argument* arg = find_argument(parser, short_name);
+int argparse_get_double_list(ArgParser* parser, char* name, double** values) {
+    Argument* arg = find_argument(parser, name);
     if (!arg || !arg->set || arg->type != ARG_DOUBLE_LIST) return 0;
 
     ListNode* head = *(ListNode**)arg->value;
@@ -496,7 +526,7 @@ int argparse_get_double_list(ArgParser* parser, char* short_name, double** value
     ListNode* current = head;
 
     if (!*values) {
-        fprintf(stderr, "Memory allocation failed for double list\n");
+        fprintf(stderr, "Memory allocation failed for double list.\n");
         return 0;
     }
 
@@ -508,8 +538,8 @@ int argparse_get_double_list(ArgParser* parser, char* short_name, double** value
     return count;
 }
 
-int argparse_get_string_list(ArgParser* parser, char* short_name, char*** values) {
-    Argument* arg = find_argument(parser, short_name);
+int argparse_get_string_list(ArgParser* parser, char* name, char*** values) {
+    Argument* arg = find_argument(parser, name);
     if (!arg || !arg->set || arg->type != ARG_STRING_LIST) return 0;
 
     ListNode* head = *(ListNode**)arg->value;
@@ -520,7 +550,7 @@ int argparse_get_string_list(ArgParser* parser, char* short_name, char*** values
     ListNode* current = head;
 
     if (!*values) {
-        fprintf(stderr, "Memory allocation failed for string list\n");
+        fprintf(stderr, "Memory allocation failed for string list.\n");
         return 0;
     }
 
