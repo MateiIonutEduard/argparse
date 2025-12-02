@@ -8,22 +8,22 @@ int main(int argc, char** argv) {
     
     /* add arguments with some default values */
     int default_round = 2;
-    argparse_add_argument(parser, 'r', "round", ARG_INT, 
+    argparse_add_argument(parser, "-r", "--round", ARG_INT, 
                          "Number of decimal places for output", false, &default_round);
     
-    argparse_add_list_argument(parser, 'n', "numbers", ARG_INT_LIST, 
+    argparse_add_list_argument(parser, "-n", "--numbers", ARG_INT_LIST, 
                               "List of integers for calculation", true); // required
     
-    argparse_add_argument(parser, 'a', "average", ARG_BOOL, 
+    argparse_add_argument(parser, "-a", "--average", ARG_BOOL, 
                          "Calculate mean average", false, NULL);
     
-    argparse_add_argument(parser, 'm', "median", ARG_BOOL, 
+    argparse_add_argument(parser, "-m", "--median", ARG_BOOL, 
                          "Calculate median", false, NULL);
     
-    argparse_add_argument(parser, 's', "stats", ARG_BOOL, 
+    argparse_add_argument(parser, "-s", "--stats", ARG_BOOL, 
                          "Show all statistics", false, NULL);
     
-    argparse_add_argument(parser, 'v', "verbose", ARG_BOOL, 
+    argparse_add_argument(parser, "-v", "--verbose", ARG_BOOL, 
                          "Detailed output", false, NULL);
     
     /* parse arguments */
@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
     
     /* get the numbers list */
     int* numbers = NULL;
-    int count = argparse_get_int_list(parser, 'n', &numbers);
+    int count = argparse_get_int_list(parser, "-n", &numbers);
     
     if (count == 0) {
         printf("Error: No numbers provided.\n");
@@ -40,20 +40,20 @@ int main(int argc, char** argv) {
     }
     
     /* get rounding precision */
-    int decimals = argparse_get_int(parser, 'r');
-    bool show_average = argparse_get_bool(parser, 'a');
+    int decimals = argparse_get_int(parser, "-r");
+    bool show_average = argparse_get_bool(parser, "-a");
 	
-    bool show_median = argparse_get_bool(parser, 'm');
-    bool show_stats = argparse_get_bool(parser, 's');
-    bool verbose = argparse_get_bool(parser, 'v');
+    bool show_median = argparse_get_bool(parser, "-m");
+    bool show_stats = argparse_get_bool(parser, "-s");
+    bool verbose = argparse_get_bool(parser, "-v");
     
     /* if no specific operation requested, default to average */
-    if (!show_average && !show_median && !show_stats) {
+    if (!show_average && !show_median && !show_stats)
         show_average = true;
-    }
     
     /* calculate basic statistics */
     double sum = 0.0;
+	
     int min = numbers[0];
     int max = numbers[0];
     
@@ -99,13 +99,11 @@ int main(int argc, char** argv) {
         printf("count: %d\n", count);
     }
     
-    if (show_average || show_stats) {
+    if (show_average || show_stats)
         printf("average: %.*f\n", decimals, average);
-    }
     
-    if (show_median || show_stats) {
+    if (show_median || show_stats)
         printf("median: %.*f\n", decimals, median);
-    }
     
     if (show_stats) {
         printf("min: %d\n", min);

@@ -28,11 +28,11 @@ extern "C" {
     void argparse_free(ArgParser* parser);
 
     /* Define parsing for a single command-line argument. */
-    void argparse_add_argument(ArgParser* parser, char short_name, const char* long_name,
+    void argparse_add_argument(ArgParser* parser, char* short_name, const char* long_name,
         ArgType type, const char* help, bool required, void* default_value);
 
     /* Define parsing for a typed command-line list argument. */
-    void argparse_add_list_argument(ArgParser* parser, char short_name, const char* long_name,
+    void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
         ArgType list_type, const char* help, bool required);
 
     /* Parse command-line arguments and store them in the ArgParser instance. */
@@ -41,29 +41,29 @@ extern "C" {
     /* Display the help message and exit. */
     void argparse_print_help(ArgParser* parser);
 
-    /* Return the boolean value of short_name from the parsed command-line arguments. */
-    bool argparse_get_bool(ArgParser* parser, char short_name);
+    /* Return the boolean value of name from the parsed command-line arguments. */
+    bool argparse_get_bool(ArgParser* parser, char* name);
 
-    /* Return the integer value of the parameter for short_name. */
-    int argparse_get_int(ArgParser* parser, char short_name);
+    /* Return the integer value of the parameter for name. */
+    int argparse_get_int(ArgParser* parser, char* name);
 
-    /* Return the double value of the parameter for short_name. */
-    double argparse_get_double(ArgParser* parser, char short_name);
+    /* Return the double value of the parameter for name. */
+    double argparse_get_double(ArgParser* parser, char* name);
 
-    /* Return the string value of the parameter for short_name. */
-    const char* argparse_get_string(ArgParser* parser, char short_name);
+    /* Return the string value of the parameter for name. */
+    const char* argparse_get_string(ArgParser* parser, char* name);
 
-    /* Return the number of elements in the list for short_name. */
-    int argparse_get_list_count(ArgParser* parser, char short_name);
+    /* Return the number of elements in the list for name. */
+    int argparse_get_list_count(ArgParser* parser, char* name);
 
-    /* Return a copy of the integer list for short_name. */
-    int argparse_get_int_list(ArgParser* parser, char short_name, int** values);
+    /* Return a copy of the integer list for name. */
+    int argparse_get_int_list(ArgParser* parser, char* name, int** values);
 
-    /* Return a copy of the double list for short_name. */
-    int argparse_get_double_list(ArgParser* parser, char short_name, double** values);
+    /* Return a copy of the double list for name. */
+    int argparse_get_double_list(ArgParser* parser, char* name, double** values);
 
-    /* Return a copy of the string list for short_name. */
-    int argparse_get_string_list(ArgParser* parser, char short_name, char*** values);
+    /* Return a copy of the string list for name. */
+    int argparse_get_string_list(ArgParser* parser, char* name, char*** values);
 
     /* Free the memory of the integer list parameter. */
     void argparse_free_int_list(int** values, int count);
@@ -73,10 +73,10 @@ extern "C" {
 
     /* Free the memory of the string list parameter. */
     void argparse_free_string_list(char*** values, int count);
-	
-	#ifdef _MSC_VER
-	#define strdup ap_strdup
-	#endif
+
+#ifdef _MSC_VER
+#define strdup ap_strdup
+#endif
 
 #ifdef __cplusplus
 }

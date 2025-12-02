@@ -6,17 +6,17 @@ int main(int argc, char** argv) {
     ArgParser* parser = argparse_new("Calculate average of a list of integers.");
 
     /* add arguments */
-    argparse_add_argument(parser, 'a', "average", ARG_BOOL, "Calculate and display the average", false, NULL);
-    argparse_add_list_argument(parser, 'n', "numbers", ARG_INT_LIST, "List of integers to average", false);
-    argparse_add_argument(parser, 'v', "verbose", ARG_BOOL, "Show detailed output", false, NULL);
+    argparse_add_argument(parser, "-a", "--average", ARG_BOOL, "Calculate and display the average", false, NULL);
+    argparse_add_list_argument(parser, "-n", "--numbers", ARG_INT_LIST, "List of integers to average", false);
+    argparse_add_argument(parser, "-v", "--verbose", ARG_BOOL, "Show detailed output", false, NULL);
 
     /* parse command line arguments */
     argparse_parse(parser, argc, argv);
     
     /* check if average calculation was requested */
-    if (argparse_get_bool(parser, 'a')) {
+    if (argparse_get_bool(parser, "-a")) {
         int* numbers = NULL;
-        int count = argparse_get_int_list(parser, 'n', &numbers);
+        int count = argparse_get_int_list(parser, "-n", &numbers);
 
         if (count > 0) {
             /* calculate average */
@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
             double average = sum / count;
 
             /* display results */
-            if (argparse_get_bool(parser, 'v')) {
+            if (argparse_get_bool(parser, "-v")) {
                 /* verbose output */
                 printf("Numbers provided: ");
 
@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
 
         /* program name is stored elsewhere */
         printf("Example: %s --numbers 10 20 30 40 --average --verbose\n",
-            argparse_get_string(parser, 'p'));
+            argv[0]);
     }
 
     /* clean up */
