@@ -21,9 +21,9 @@ int main(int argc, char** argv) {
         if (count > 0) {
             /* calculate average */
             double sum = 0.0;
-            for (int i = 0; i < count; i++) {
+            for (int i = 0; i < count; i++)
                 sum += numbers[i];
-            }
+            
             double average = sum / count;
 
             /* display results */
@@ -42,10 +42,9 @@ int main(int argc, char** argv) {
                 printf("sum: %.2f\n", sum);
                 printf("average: %.2f\n", average);
             }
-            else {
+            else
                 /* simple output */
                 printf("average: %.2f\n", average);
-            }
 
             /* free the list memory */
             argparse_free_int_list(&numbers, count);
