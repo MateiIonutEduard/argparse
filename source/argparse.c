@@ -45,13 +45,16 @@ struct ArgParser {
 };
 
 static Argument* find_argument(ArgParser* parser, char* name) {
-    Argument* current = parser->arguments;
+    /* early return for invalid cases */
+    if (parser == NULL || name == NULL || name[0] == '\0')
+        return NULL;
 
-    while (current) {
-        if ((current->short_name && strstr(current->short_name, name)) || (current->short_name && strstr(current->long_name, name)))
-            return current;
+    Argument* arg = parser->arguments;
 
-        current = current->next;
+    while (arg != NULL) {
+        if (arg->short_name != NULL && strcmp(arg->short_name, name) == 0) return arg;
+        if (arg->long_name != NULL && strcmp(arg->long_name, name) == 0) return arg;
+        arg = arg->next;
     }
 
     return NULL;
