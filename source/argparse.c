@@ -609,7 +609,6 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
     }
 }
 
-/* value access implementations */
 bool argparse_get_bool(ArgParser* parser, char* name) {
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(bool*)arg->value : false;
@@ -630,7 +629,6 @@ const char* argparse_get_string(ArgParser* parser, char* name) {
     return arg && arg->set ? (const char*)arg->value : NULL;
 }
 
-/* list access implementations */
 int argparse_get_list_count(ArgParser* parser, char* name) {
     Argument* arg = find_argument(parser, name);
     if (!arg || !arg->set) return 0;
@@ -711,7 +709,6 @@ int argparse_get_string_list(ArgParser* parser, char* name, char*** values) {
     return count;
 }
 
-/* fixed list freeing functions */
 void argparse_free_int_list(int** values, int count) {
     if (!values || !*values) return;
     free(*values);
@@ -735,22 +732,36 @@ void argparse_free_string_list(char*** values, int count) {
 }
 
 void argparse_print_help(ArgParser* parser) {
-    printf("Usage: %s [OPTIONS]\n\n", parser->program_name);
-    if (parser->description) printf("%s\n\n", parser->description);
+    if (!parser)
+        return;
 
-    Argument* current = parser->arguments;
+    /* print usage header */
+    printf("Usage: %s [OPTIONS]\n\n", parser->program_name ? parser->program_name : "");
 
-    while (current) {
+    /* print description if available */
+    if (parser->description && parser->description[0] != '\0') {
+        printf("%s\n\n", parser->description);
+    }
+
+    /* iterate through arguments */
+    Argument* arg = parser->arguments;
+
+    while (arg) {
+        /* argument names */
         printf("  ");
-        if (current->short_name)
-            printf("%s", current->short_name);
 
-        if (current->long_name) {
-            if (current->short_name) printf(", ");
-            printf("%s", current->long_name);
+        if (arg->short_name)
+            printf("%s", arg->short_name);
+
+        if (arg->long_name) {
+            if (arg->short_name)
+                printf(", ");
+            
+            printf("%s", arg->long_name);
         }
 
-        switch (current->type) {
+        /* Argument value placeholder */
+        switch (arg->type) {
         case ARG_INT:
         case ARG_DOUBLE:
         case ARG_STRING:
@@ -759,18 +770,20 @@ void argparse_print_help(ArgParser* parser) {
         case ARG_INT_LIST:
         case ARG_DOUBLE_LIST:
         case ARG_STRING_LIST:
-            /* updated help format */
             printf(" VALUE1 VALUE2 ...");
             break;
         default:
             break;
         }
 
-        printf("\n    %s", current->help ? current->help : "");
-        if (current->required) printf(" [required]");
+        /* help text and required flag */
+        printf("\n    %s", arg->help != NULL ? arg->help : "");
+
+        if (arg->required)
+            printf(" [required]");
 
         printf("\n");
-        current = current->next;
+        arg = arg->next;
     }
 }
 
