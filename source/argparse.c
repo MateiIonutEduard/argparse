@@ -84,13 +84,17 @@ static bool is_argument(ArgParser* parser, const char* str) {
 }
 
 static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_name) {
-    Argument* current = parser->arguments;
+    /* validate inputs */
+    if (!parser || !long_name || long_name[0] == '\0')
+        return NULL;
 
-    while (current) {
-        if (current->long_name && strstr(current->long_name, long_name) == 0)
-            return current;
+    Argument* arg = parser->arguments;
 
-        current = current->next;
+    while (arg != NULL) {
+        if (arg->long_name != NULL && strcmp(arg->long_name, long_name) == 0)
+            return arg;
+        
+        arg = arg->next;
     }
 
     return NULL;
