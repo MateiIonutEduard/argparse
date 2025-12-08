@@ -46,7 +46,7 @@ struct ArgParser {
 
 static Argument* find_argument(ArgParser* parser, char* name) {
     /* early return for invalid cases */
-    if (parser == NULL || name == NULL || name[0] == '\0')
+    if (!parser || !name || name[0] == '\0')
         return NULL;
 
     Argument* arg = parser->arguments;
@@ -61,18 +61,23 @@ static Argument* find_argument(ArgParser* parser, char* name) {
 }
 
 static bool is_argument(ArgParser* parser, const char* str) {
+    /* quick rejection of invalid inputs */
     if (!parser || !str || str[0] == '\0')
         return false;
 
-    /* check all registered arguments */
-    Argument* current = parser->arguments;
+    /* single-pass through the argument list */
+    Argument* arg = parser->arguments;
 
-    while (current) {
-        /* check short name or long name */
-        if (current->short_name && strcmp(str, current->short_name) == 0) return true;
-        if (current->long_name && strcmp(str, current->long_name) == 0) return true;
+    while (arg != NULL) {
+        /* check short name first */
+        if (arg->short_name != NULL && strcmp(arg->short_name, str) == 0)
+            return true;
 
-        current = current->next;
+        /* then check long name */
+        if (arg->long_name != NULL && strcmp(arg->long_name, str) == 0)
+            return true;
+        
+        arg = arg->next;
     }
 
     return false;
