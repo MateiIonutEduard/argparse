@@ -146,27 +146,20 @@ static void* create_default_value(ArgType type) {
 }
 
 static void append_to_list(Argument* arg, void* value) {
+    if (!arg || !value) return;
     ListNode** head = (ListNode**)arg->value;
-    ListNode* new_node = malloc(sizeof(ListNode));
+    ListNode** tail_ptr = head;
 
-    if (!new_node) {
-        fprintf(stderr, "Memory allocation failed for list node\n");
-        exit(1);
-    }
+    /* find the last next pointer */
+    while (*tail_ptr)
+        tail_ptr = &(*tail_ptr)->next;
+
+    ListNode* new_node = (ListNode*)malloc(sizeof(ListNode));
+    if (!new_node) return;
 
     new_node->data = value;
     new_node->next = NULL;
-
-    if (*head == NULL)
-        *head = new_node;
-    else {
-        ListNode* current = *head;
-
-        while (current->next)
-            current = current->next;
-
-        current->next = new_node;
-    }
+    *tail_ptr = new_node;
 }
 
 static int list_length(ListNode* head) {
