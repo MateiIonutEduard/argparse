@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+#include <errno.h>
+#include <limits.h>
 #include <ctype.h>
 
 /* Return a null-terminated duplicate of the string referenced by str. */
@@ -409,33 +412,107 @@ void argparse_add_list_argument(ArgParser* parser, char* short_name, const char*
     argparse_add_argument(parser, short_name, long_name, list_type, help, required, NULL);
 }
 
+static bool get_safe_int(const char* str, int* out) {
+    char* endptr;
+    long val = strtol(str, &endptr, 10);
+
+    /* check for conversion errors */
+    if (endptr == str || *endptr != '\0')
+        return false;
+
+    /* check for overflow */
+    if (val > INT_MAX || val < INT_MIN)
+        return false;
+
+    *out = (int)val;
+    return true;
+}
+
+static bool get_safe_double(const char* str, double* out) {
+    char* endptr;
+    double val = strtod(str, &endptr);
+
+    /* check for conversion errors */
+    if (endptr == str || *endptr != '\0')
+        return false;
+
+    /* check for overflow / underflow */
+    if (val == HUGE_VAL || val == -HUGE_VAL || val == 0.0) {
+        if (errno == ERANGE)
+            return false;
+    }
+
+    *out = val;
+    return true;
+}
+
 static void parse_single_value(Argument* arg, const char* str_val) {
-    /*
-        list arguments are now handled separately in parse_list_values
-        this function only handles single-value arguments
-    */
+    if (!arg || !str_val)
+        return;
+
+    /* validate that it is not processing a list argument here */
+    if (is_list_type(arg->type)) {
+        fprintf(stderr, "Internal error: list argument processed in parse_single_value.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    /* handle each argument type with proper error checking */
     switch (arg->type) {
     case ARG_INT:
-        *(int*)arg->value = atoi(str_val); 
+        if (arg->value) {
+            int parsed_val = 0;
+
+            if (!get_safe_int(str_val, &parsed_val)) {
+                fprintf(stderr, "Invalid integer value: %s.\n", str_val);
+                exit(EXIT_FAILURE);
+            }
+
+            *(int*)arg->value = parsed_val;
+        }
         break;
+
     case ARG_DOUBLE:
-        *(double*)arg->value = atof(str_val);
+        if (arg->value != NULL) {
+            double parsed_val = 0.0;
+
+            if (!get_safe_double(str_val, &parsed_val)) {
+                fprintf(stderr, "Invalid floating-point value: %s.\n", str_val);
+                exit(EXIT_FAILURE);
+            }
+
+            *(double*)arg->value = parsed_val;
+        }
+
         break;
-    case ARG_STRING:
-        if (arg->value) free(arg->value);
-        arg->value = strdup(str_val);
-        break;
+
+    case ARG_STRING: 
+    {
+        char* new_value = strdup(str_val);
+
+        if (!new_value) {
+            fprintf(stderr, "Memory allocation failed for string value.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        if (arg->value)
+            free(arg->value);
+
+        arg->value = new_value;
+    }
+    break;
+
     case ARG_BOOL:
-        *(bool*)arg->value = true;
+        if (arg->value)
+            *(bool*)arg->value = true;
         break;
-    case ARG_INT_LIST:
-    case ARG_DOUBLE_LIST:
-    case ARG_STRING_LIST:
-        /* these should not reach here - list arguments are handled in parse_list_values */
-        fprintf(stderr, "Internal error: list argument processed in parse_single_value\n");
-        exit(1);
+
+    default:
+        /* unknown argument type */
+        fprintf(stderr, "Internal error: unknown argument type in parse_single_value.\n");
+        exit(EXIT_FAILURE);
         break;
     }
+
     arg->set = true;
 }
 
