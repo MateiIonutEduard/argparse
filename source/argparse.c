@@ -310,43 +310,63 @@ static void free_argument(Argument* arg) {
 
 void argparse_add_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType type, const char* help, bool required, void* default_value) {
-    /* don't add duplicate help arguments */
-    if ((short_name && strstr(short_name, "h")) || (long_name && strstr(long_name, "help")))
+
+    /* validate parser parameter */
+    if (!parser) return;
+
+    /* don't add duplicate help arguments, but use exact matching */
+    if ((short_name != NULL && strcmp(short_name, "-h") == 0) ||
+        (long_name != NULL && strcmp(long_name, "--help") == 0))
         return;
-    
+
+    /* alloc argument structure */
     Argument* arg = (Argument*)malloc(sizeof(Argument));
     if (!arg) return;
 
-    arg->short_name = short_name ? strdup(short_name) : NULL;
-    arg->long_name = long_name ? strdup(long_name) : NULL;
+    /* init all fields to known state */
+    arg->short_name = NULL;
+    arg->long_name = NULL;
 
-    arg->help = help ? strdup(help) : NULL;
-    arg->type = type;
+    arg->help = NULL;
+    arg->value = NULL;
 
-    arg->required = required;
-    arg->set = false;
-
-    arg->is_list = is_list_type(type);
     arg->next = NULL;
+    arg->required = required;
 
+    arg->set = false;
+    arg->type = type;
+    arg->is_list = is_list_type(type);
+
+    /* duplicate strings */
+    if (short_name) arg->short_name = strdup(short_name);
+
+    if (long_name) arg->long_name = strdup(long_name);
+    if (help) arg->help = strdup(help);
+
+    /* handle default value allocation */
     if (default_value) {
         switch (type) {
         case ARG_INT:
             arg->value = (int*)malloc(sizeof(int));
             if (arg->value) *(int*)arg->value = *(int*)default_value;
             break;
+
         case ARG_DOUBLE:
             arg->value = (double*)malloc(sizeof(double));
             if (arg->value) *(double*)arg->value = *(double*)default_value;
             break;
+
         case ARG_STRING:
             arg->value = strdup((char*)default_value);
             break;
+
         case ARG_BOOL:
             arg->value = (bool*)malloc(sizeof(bool));
             if (arg->value) *(bool*)arg->value = *(bool*)default_value;
             break;
+
         default:
+            /* for lists or unknown types */
             arg->value = create_default_value(type);
             break;
         }
@@ -354,19 +374,33 @@ void argparse_add_argument(ArgParser* parser, char* short_name, const char* long
     else
         arg->value = create_default_value(type);
 
-    /* check if memory allocation for value failed */
-    if (!arg->value && type != ARG_STRING) {
+    /* check if alloc fails */
+    bool allocation_failed = false;
+
+    /* check string allocations */
+    if ((short_name && !arg->short_name) ||
+        (long_name && !arg->long_name) ||
+        (help && !arg->help))
+        allocation_failed = true;
+
+    /* check value allocation */
+    if (!arg->value && type != ARG_STRING)
+        allocation_failed = true;
+
+    /* clean up on failure and return */
+    if (allocation_failed) {
         free_argument(arg);
         return;
     }
-    
-    /* add to linked list */
-    if (!parser->arguments)
+
+    /* add to linked list; maintain tail pointer for O(1) appends */
+    if (parser->arguments == NULL)
         parser->arguments = arg;
     else {
-        Argument* current = parser->arguments;
-        while (current->next) current = current->next;
-        current->next = arg;
+        /* find tail pointer */
+        Argument* tail = parser->arguments;
+        while (tail->next) tail = tail->next;
+        tail->next = arg;
     }
 }
 
