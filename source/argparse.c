@@ -174,30 +174,43 @@ static int list_length(ListNode* head) {
 }
 
 /* Helper function to parse multiple values for list arguments. */
-static int parse_list_values(ArgParser* parser, Argument* arg, int current_index, int argc, char** argv) {
+static int parse_list_values(ArgParser* parser, Argument* arg,
+    int current_index, int argc, char** argv) {
+    /* validate inputs */
+    if (!parser || !arg || !argv)
+        return current_index;
+
     int i = current_index + 1;
     int values_parsed = 0;
 
-    /* parse all subsequent values until we hit another registered argument */
+    /* parse all subsequent values until hitting another registered argument */
     while (i < argc && !is_argument(parser, argv[i])) {
+        void* value = NULL;
+
         switch (arg->type) {
         case ARG_INT_LIST: {
             int* val = (int*)malloc(sizeof(int));
-            if (val) *val = atoi(argv[i]);
 
-            append_to_list(arg, val);
+            if (val != NULL) {
+                *val = atoi(argv[i]);
+                value = val;
+            }
+
             break;
         }
         case ARG_DOUBLE_LIST: {
             double* val = (double*)malloc(sizeof(double));
-            if (val) *val = atof(argv[i]);
 
-            append_to_list(arg, val);
+            if (val != NULL) {
+                *val = atof(argv[i]);
+                value = val;
+            }
+
             break;
         }
         case ARG_STRING_LIST: {
             char* val = strdup(argv[i]);
-            append_to_list(arg, val);
+            if (val) value = val;
             break;
         }
         default:
@@ -205,21 +218,28 @@ static int parse_list_values(ArgParser* parser, Argument* arg, int current_index
             break;
         }
 
-        values_parsed++;
+        if (value != NULL) {
+            append_to_list(arg, value);
+            values_parsed++;
+        }
+        else {
+            /* memory allocation failed */
+            fprintf(stderr, "Memory allocation failed for list value.\n");
+            break;
+        }
+
         i++;
     }
 
-    if (values_parsed > 0)
-        arg->set = true;
-    else {
+    if (!values_parsed) {
         fprintf(stderr, "List argument ");
-        if (arg->long_name) fprintf(stderr, "%s", arg->long_name);
-        else if (arg->short_name) fprintf(stderr, "%s", arg->short_name);
+        if (arg->long_name != NULL) fprintf(stderr, "%s", arg->long_name);
+        else if (arg->short_name != NULL) fprintf(stderr, "%s", arg->short_name);
         fprintf(stderr, " requires at least one value\n");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
-    /* return the last index we processed */
+    arg->set = true;
     return i - 1;
 }
 
