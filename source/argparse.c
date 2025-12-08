@@ -233,8 +233,8 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
 
     if (!values_parsed) {
         fprintf(stderr, "List argument ");
-        if (arg->long_name != NULL) fprintf(stderr, "%s", arg->long_name);
-        else if (arg->short_name != NULL) fprintf(stderr, "%s", arg->short_name);
+        if (arg->long_name) fprintf(stderr, "%s", arg->long_name);
+        else if (arg->short_name) fprintf(stderr, "%s", arg->short_name);
         fprintf(stderr, " requires at least one value\n");
         exit(EXIT_FAILURE);
     }
@@ -262,36 +262,49 @@ ArgParser* argparse_new(const char* description) {
 static void free_argument(Argument* arg) {
     if (!arg) return;
 
+    /* free string fields */
+    free(arg->short_name);
+
     free(arg->long_name);
     free(arg->help);
 
-    switch (arg->type) {
-    case ARG_INT:
-    case ARG_DOUBLE:
-    case ARG_BOOL:
-        free(arg->value);
-        break;
-    case ARG_STRING:
-        if (arg->value) free(arg->value);
-        break;
-    case ARG_INT_LIST:
-    case ARG_DOUBLE_LIST:
-    case ARG_STRING_LIST: {
-        ListNode* head = *(ListNode**)arg->value;
+    /* free value based on type */
+    if (arg->value != NULL) {
+        switch (arg->type) {
+        case ARG_INT:
+        case ARG_DOUBLE:
+        case ARG_BOOL:
+            free(arg->value);
+            break;
 
-        while (head) {
-            ListNode* next = head->next;
-            free(head->data);
+        case ARG_STRING:
+            free(arg->value);
+            break;
 
-            free(head);
-            head = next;
+        case ARG_INT_LIST:
+        case ARG_DOUBLE_LIST:
+        case ARG_STRING_LIST: {
+            ListNode* head = *(ListNode**)arg->value;
+
+            /* free list nodes and their data */
+            while (head != NULL) {
+                ListNode* next = head->next;
+
+                /* free node data based on type */
+                free(head->data);
+
+                /* free the node itself */
+                free(head);
+                head = next;
+            }
+
+            free(arg->value);
+            break;
         }
-
-        free(arg->value);
-        break;
-    }
+        }
     }
 
+    /* finally free the argument struct */
     free(arg);
 }
 
