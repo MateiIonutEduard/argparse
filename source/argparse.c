@@ -517,92 +517,89 @@ static void parse_single_value(Argument* arg, const char* str_val) {
 }
 
 void argparse_parse(ArgParser* parser, int argc, char** argv) {
-    if (!parser || argc < 1 || !argv) return;
+    /* check for valid inputs */
+    if (!parser || !argv)
+        return;
 
-    if (parser->program_name) free(parser->program_name);
+    /* store program name */
+    if (parser->program_name != NULL)
+        free(parser->program_name);
+    
     parser->program_name = strdup(argv[0]);
 
     /* check if no arguments were provided */
     if (argc == 1) {
         argparse_print_help(parser);
-        exit(0);
+        exit(EXIT_SUCCESS);
     }
 
+    /* process command line arguments */
     for (int i = 1; i < argc; i++) {
         const char* current_arg = argv[i];
 
         /* check if this is a registered argument */
         if (is_argument(parser, current_arg)) {
+            /* find the argument */
             Argument* arg = find_argument(parser, (char*)current_arg);
             if (!arg) arg = find_argument_by_long_name(parser, current_arg);
 
             if (!arg) {
-                /* should not happen since is_argument() returned true */
-                fprintf(stderr, "Internal error: Argument not found\n");
-                exit(1);
+                fprintf(stderr, "Internal error: Argument not found.\n");
+                exit(EXIT_FAILURE);
             }
 
-            /* handle help argument */
-            if ((arg->short_name && strstr(arg->short_name, "h")) ||
-                (arg->long_name && strstr(arg->long_name, "help"))) {
+            /* handle help argument by using of exact matching for safety */
+            if ((arg->short_name != NULL && strcmp(arg->short_name, "-h") == 0) ||
+                (arg->long_name != NULL && strcmp(arg->long_name, "--help") == 0)) {
                 parser->help_requested = true;
                 argparse_print_help(parser);
-                exit(0);
+                exit(EXIT_SUCCESS);
             }
 
-            /* found the argument, process it */
-            if (arg->type == ARG_BOOL) {
+            /* process the argument based on its type */
+            if (arg->type == ARG_BOOL)
                 parse_single_value(arg, "");
-            }
             else if (arg->is_list)
-                /* handle list arguments with space-separated values */
                 i = parse_list_values(parser, arg, i, argc, argv);
             else if (i + 1 < argc) {
-                /* check if next token is NOT a registered argument */
+                /* check if next token is not a registered argument */
                 if (!is_argument(parser, argv[i + 1]))
-                    /* next token is a value */
                     parse_single_value(arg, argv[++i]);
                 else {
                     /* next token is another argument */
-                    fprintf(stderr, "Option ");
+                    fprintf(stderr, "Option %s requires a value\n",
+                        arg->short_name ? arg->short_name :
+                        arg->long_name ? arg->long_name : "(unnamed)");
 
-                    if (arg->short_name) fprintf(stderr, "%s", arg->short_name);
-                    else if (arg->long_name) fprintf(stderr, "%s", arg->long_name);
-
-                    fprintf(stderr, " requires a value\n");
-                    exit(1);
+                    exit(EXIT_FAILURE);
                 }
             }
             else {
                 /* no more arguments, but this one needs a value */
-                fprintf(stderr, "Option ");
+                fprintf(stderr, "Option %s requires a value\n",
+                    arg->short_name ? arg->short_name :
+                    arg->long_name ? arg->long_name : "(unnamed)");
 
-                if (arg->short_name) fprintf(stderr, "%s", arg->short_name);
-                else if (arg->long_name) fprintf(stderr, "%s", arg->long_name);
-
-                fprintf(stderr, " requires a value\n");
-                exit(1);
+                exit(EXIT_FAILURE);
             }
         }
         else {
-            /* not a registered argument - it's a value without preceding option */
+            /* not a registered argument, it's only a value without preceding option */
             fprintf(stderr, "Unexpected value: %s (did you forget an option?)\n", current_arg);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
     }
 
     /* validate required arguments */
     Argument* current = parser->arguments;
 
-    while (current) {
+    while (current != NULL) {
         if (current->required && !current->set) {
-            fprintf(stderr, "Required argument ");
+            fprintf(stderr, "Required argument %s not provided\n",
+                current->short_name ? current->short_name :
+                current->long_name ? current->long_name : "(unnamed)");
 
-            if (current->short_name) fprintf(stderr, "%s", current->short_name);
-            else if (current->long_name) fprintf(stderr, "%s", current->long_name);
-
-            fprintf(stderr, " not provided\n");
-            exit(1);
+            exit(EXIT_FAILURE);
         }
 
         current = current->next;
