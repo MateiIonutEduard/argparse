@@ -566,8 +566,14 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         const char* current_arg = argv[i];
 
+        /* handle special help argument by using of exact matching for safety */
+        if (is_help_argument(current_arg)) {
+            parser->help_requested = true;
+            argparse_print_help(parser);
+            exit(EXIT_SUCCESS);
+        }
         /* check if this is a registered argument */
-        if (is_argument(parser, current_arg)) {
+        else if (is_argument(parser, current_arg)) {
             /* find the argument */
             Argument* arg = find_argument(parser, (char*)current_arg);
             if (!arg) arg = find_argument_by_long_name(parser, current_arg);
@@ -575,14 +581,6 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
             if (!arg) {
                 fprintf(stderr, "Internal error: Argument not found.\n");
                 exit(EXIT_FAILURE);
-            }
-
-            /* handle help argument by using of exact matching for safety */
-            if ((arg->short_name != NULL && strcmp(arg->short_name, "-h") == 0) ||
-                (arg->long_name != NULL && strcmp(arg->long_name, "--help") == 0)) {
-                parser->help_requested = true;
-                argparse_print_help(parser);
-                exit(EXIT_SUCCESS);
             }
 
             /* process the argument based on its type */
