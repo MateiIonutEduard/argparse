@@ -45,6 +45,7 @@ struct ArgParser {
 
     char* description;
     bool help_requested;
+    bool help_added;
 };
 
 static Argument* find_argument(ArgParser* parser, char* name) {
@@ -249,15 +250,15 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
 ArgParser* argparse_new(const char* description) {
     ArgParser* parser = (ArgParser*)malloc(sizeof(ArgParser));
     if (!parser) return NULL;
-
     parser->arguments = NULL;
     parser->program_name = NULL;
 
     parser->description = description ? strdup(description) : NULL;
     parser->help_requested = false;
+    parser->help_added = true;
 
     /* automatically add help argument */
-    argparse_add_argument(parser, "h", "help", ARG_BOOL,
+    argparse_add_argument(parser, "-h", "--help", ARG_BOOL,
         "Show this help message and exit", false, NULL);
     return parser;
 }
@@ -311,6 +312,34 @@ static void free_argument(Argument* arg) {
     free(arg);
 }
 
+/* High-performance help argument detection function without prefix dependency. */
+static bool is_help_argument(const char* arg_name) {
+    /* quick rejection of NULL or empty strings */
+    if (!arg_name || arg_name[0] == '\0')
+        return false;
+
+    /* skip any prefix both single and double char prefixes */
+    const char* name_start = arg_name;
+
+    /* skip prefix characters (allow any non-alphanumeric as prefix) */
+    while (*name_start && !isalnum((unsigned char)*name_start))
+        name_start++;
+
+    /* check for single char 'h' for short help argument name */
+    if (name_start[0] == 'h' && name_start[1] == '\0')
+        return true;
+
+    /* check for long "help", optimized for performance */
+    if (name_start[0] == 'h' &&
+        name_start[1] == 'e' &&
+        name_start[2] == 'l' &&
+        name_start[3] == 'p' &&
+        name_start[4] == '\0')
+        return true;
+
+    return false;
+}
+
 void argparse_add_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType type, const char* help, bool required, void* default_value) {
 
@@ -318,8 +347,8 @@ void argparse_add_argument(ArgParser* parser, char* short_name, const char* long
     if (!parser) return;
 
     /* don't add duplicate help arguments, but use exact matching */
-    if ((short_name != NULL && strcmp(short_name, "-h") == 0) ||
-        (long_name != NULL && strcmp(long_name, "--help") == 0))
+    if (!parser->help_added && ((short_name && is_help_argument(short_name)) ||
+        (long_name && is_help_argument(long_name))))
         return;
 
     /* alloc argument structure */
