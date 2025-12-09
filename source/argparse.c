@@ -686,26 +686,64 @@ int argparse_get_double_list(ArgParser* parser, char* name, double** values) {
 }
 
 int argparse_get_string_list(ArgParser* parser, char* name, char*** values) {
-    Argument* arg = find_argument(parser, name);
-    if (!arg || !arg->set || arg->type != ARG_STRING_LIST) return 0;
+    /* validate input params */
+    if (!parser || !name || !values)
+        return 0;
 
+    /* find the argument */
+    Argument* arg = find_argument(parser, name);
+
+    if (!arg || !arg->set || arg->type != ARG_STRING_LIST)
+        return 0;
+
+    /* get list head and count */
     ListNode* head = *(ListNode**)arg->value;
     int count = list_length(head);
-    if (count == 0) return 0;
 
-    *values = (char**)malloc(count * sizeof(char*));
-    ListNode* current = head;
-
-    if (!*values) {
-        fprintf(stderr, "Memory allocation failed for string list.\n");
+    if (count == 0) {
+        *values = NULL;
         return 0;
     }
 
-    for (int i = 0; i < count; i++) {
-        (*values)[i] = strdup((char*)current->data);
-        current = current->next;
+    /* alloc array for string pointers */
+    char** string_array = (char**)malloc((size_t)count * sizeof(char*));
+
+    if (!string_array) {
+        fprintf(stderr, "Memory allocation failed for string list.\n");
+        *values = NULL;
+        return 0;
     }
 
+    /* duplicate all strings from the list */
+    ListNode* current = head;
+    int i = 0;
+
+    while (current && i < count) {
+        char* source_str = (char*)current->data;
+
+        if (source_str) {
+            string_array[i] = strdup(source_str);
+
+            if (!string_array[i]) {
+                /* clean up on failure and return */
+                fprintf(stderr, "Memory allocation failed for string list element.\n");
+
+                for (int j = 0; j < i; j++)
+                    free(string_array[j]);
+                
+                free(string_array);
+                *values = NULL;
+                return 0;
+            }
+        }
+        else
+            /* handle NULL strings in the list */
+            string_array[i] = NULL;
+        current = current->next;
+        i++;
+    }
+
+    *values = string_array;
     return count;
 }
 
