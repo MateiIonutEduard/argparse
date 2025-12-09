@@ -610,26 +610,31 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
 }
 
 bool argparse_get_bool(ArgParser* parser, char* name) {
+    if (parser == NULL) return 0;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(bool*)arg->value : false;
 }
 
 int argparse_get_int(ArgParser* parser, char* name) {
+    if (parser == NULL) return 0;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(int*)arg->value : 0;
 }
 
 double argparse_get_double(ArgParser* parser, char* name) {
+    if (parser == NULL) return 0;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(double*)arg->value : 0.0;
 }
 
 const char* argparse_get_string(ArgParser* parser, char* name) {
+    if (parser == NULL) return 0;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? (const char*)arg->value : NULL;
 }
 
 int argparse_get_list_count(ArgParser* parser, char* name) {
+    if (parser == NULL) return 0;
     Argument* arg = find_argument(parser, name);
     if (!arg || !arg->set) return 0;
 
