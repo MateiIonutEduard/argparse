@@ -7,13 +7,34 @@
 #include <limits.h>
 #include <ctype.h>
 
+static bool safe_add_size_t(size_t a, size_t b, size_t* result) {
+    /* would overflow */
+    if (a > SIZE_MAX - b) return false;
+    *result = a + b;
+    return true;
+}
+
+static bool safe_multiply_size_t(size_t a, size_t b, size_t* result) {
+    /* would overflow */
+    if (a > 0 && b > SIZE_MAX / a) return false;
+    
+    *result = a * b;
+    return true;
+}
+
 /* Return a null-terminated duplicate of the string referenced by str. */
 static char* ap_strdup(const char* str) {
     if (!str) return NULL;
-    size_t len = strlen(str) + 1;
+    size_t len = strlen(str);
+    size_t total_size;
 
-    char* copy = (char*)malloc(len);
-    if (copy) memcpy(copy, str, len);
+    if (!safe_add_size_t(len, 1, &total_size))
+        return NULL;
+
+    char* copy = (char*)malloc(total_size);
+    if (!copy) return NULL;
+
+    memcpy(copy, str, total_size);
     return copy;
 }
 
@@ -248,7 +269,7 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
 }
 
 ArgParser* argparse_new(const char* description) {
-    ArgParser* parser = (ArgParser*)malloc(sizeof(ArgParser));
+    ArgParser* parser = (ArgParser*)calloc(1, sizeof(ArgParser));
     if (!parser) return NULL;
     parser->arguments = NULL;
     parser->program_name = NULL;
@@ -319,7 +340,7 @@ static bool is_help_argument(const char* arg_name) {
         return false;
 
     /* skip any prefix both single and double char prefixes */
-    const char* name_start = arg_name;
+    volatile const char* name_start = arg_name;
 
     /* skip prefix characters (allow any non-alphanumeric as prefix) */
     while (*name_start && !isalnum((unsigned char)*name_start))
@@ -442,15 +463,32 @@ void argparse_add_list_argument(ArgParser* parser, char* short_name, const char*
 }
 
 static bool get_safe_int(const char* str, int* out) {
-    char* endptr;
-    long val = strtol(str, &endptr, 10);
+    if (!str || !out) return false;
 
-    /* check for conversion errors */
-    if (endptr == str || *endptr != '\0')
-        return false;
+    /* skip leading whitespace manually */
+    const char* p = str;
 
-    /* check for overflow */
-    if (val > INT_MAX || val < INT_MIN)
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == '\0') return false;
+
+    char* endptr; errno = 0;
+    long val = strtol(p, &endptr, 10);
+
+    /* check if any conversion happened */
+    if (endptr == p) return false;
+
+    /* check for trailing non-whitespace chars */
+    while (*endptr != '\0') {
+        if (!isspace((unsigned char)*endptr)) 
+            return false;
+        endptr++;
+    }
+
+    /* check for overflow / underflow */
+    if (errno == ERANGE) return false;
+
+    /* check if value fits in int */
+    if (val > INT_MAX || val < INT_MIN) 
         return false;
 
     *out = (int)val;
@@ -458,18 +496,28 @@ static bool get_safe_int(const char* str, int* out) {
 }
 
 static bool get_safe_double(const char* str, double* out) {
-    char* endptr;
-    double val = strtod(str, &endptr);
+    if (!str || !out) return false;
+    const char* p = str;
 
-    /* check for conversion errors */
-    if (endptr == str || *endptr != '\0')
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == '\0') return false;
+
+    char* endptr; errno = 0;
+    double val = strtod(p, &endptr);
+    if (endptr == p) return false;
+
+    /* check for trailing non-whitespace */
+    while (*endptr != '\0') {
+        if (!isspace((unsigned char)*endptr)) return false;
+        endptr++;
+    }
+
+    /* check for math errors */
+    if (errno == ERANGE || errno == EDOM)
         return false;
 
-    /* check for overflow / underflow */
-    if (val == HUGE_VAL || val == -HUGE_VAL || val == 0.0) {
-        if (errno == ERANGE)
-            return false;
-    }
+    if (fpclassify(val) == FP_INFINITE || fpclassify(val) == FP_NAN)
+        return false;
 
     *out = val;
     return true;
