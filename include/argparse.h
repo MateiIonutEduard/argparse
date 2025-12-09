@@ -21,20 +21,6 @@ extern "C" {
     typedef struct ArgParser ArgParser;
     typedef enum ArgType ArgType;
 
-    /* use hash table if more arguments than this threshold */
-    #define ARGPARSE_HASH_THRESHOLD 8
-
-    /* error codes */
-    typedef enum {
-        ARGPARSE_SUCCESS = 0,
-        ARGPARSE_ERROR_NULL_PTR,
-        ARGPARSE_ERROR_MEMORY,
-        ARGPARSE_ERROR_NOT_FOUND,
-        ARGPARSE_ERROR_TYPE_MISMATCH,
-        ARGPARSE_ERROR_REQUIRED_ARG,
-        ARGPARSE_ERROR_INVALID_INPUT
-    } ArgParseError;
-
     /* Create a new ArgParser instance, allocate memory, and set a short description. */
     ArgParser* argparse_new(const char* description);
 
