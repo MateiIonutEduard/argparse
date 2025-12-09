@@ -662,26 +662,45 @@ int argparse_get_int_list(ArgParser* parser, char* name, int** values) {
 }
 
 int argparse_get_double_list(ArgParser* parser, char* name, double** values) {
-    Argument* arg = find_argument(parser, name);
-    if (!arg || !arg->set || arg->type != ARG_DOUBLE_LIST) return 0;
+    /* validate inputs */
+    if (!parser || !name || !values)
+        return 0;
 
+    /* find the argument */
+    Argument* arg = find_argument(parser, name);
+
+    if (!arg || !arg->set || arg->type != ARG_DOUBLE_LIST)
+        return 0;
+
+    /* get list head and count */
     ListNode* head = *(ListNode**)arg->value;
     int count = list_length(head);
-    if (count == 0) return 0;
 
-    *values = (double*)malloc(count * sizeof(double));
-    ListNode* current = head;
-
-    if (!*values) {
-        fprintf(stderr, "Memory allocation failed for double list.\n");
+    if (count == 0) {
+        *values = NULL;
         return 0;
     }
 
-    for (int i = 0; i < count; i++) {
-        (*values)[i] = *(double*)current->data;
+    /* alloc memory for the array */
+    double* array = (double*)malloc((size_t)count * sizeof(double));
+
+    if (array == NULL) {
+        fprintf(stderr, "Memory allocation failed for double list.\n");
+        *values = NULL;
+        return 0;
+    }
+
+    /* copy data from linked list to array */
+    ListNode* current = head;
+
+    for (int i = 0; i < count && current; i++) {
+        if (current->data)
+            array[i] = *(double*)current->data;
+        else array[i] = 0.0;
         current = current->next;
     }
 
+    *values = array;
     return count;
 }
 
