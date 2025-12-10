@@ -539,6 +539,25 @@ void argparse_add_argument(ArgParser* parser, char* short_name, const char* long
     }
 }
 
+void argparse_add_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+    ArgType type, const char* help, bool required, void* default_value, char suffix) {
+
+    /* use existing memory allocation */
+    argparse_add_argument(parser, short_name, long_name, type, help, required, default_value);
+
+    /* find the last added argument efficiently */
+    Argument* arg = parser->arguments;
+    Argument* last = NULL;
+
+    while (arg) {
+        last = arg;
+        arg = arg->next;
+    }
+
+    if (last)
+        last->suffix = suffix;
+}
+
 /* Skip dynamic prefixes for a specific argument.  */
 static inline const char* skip_dynamic_prefix(const char* str) {
     if (!str) return NULL;
@@ -740,6 +759,26 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
 void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType list_type, const char* help, bool required) {
     argparse_add_argument(parser, short_name, long_name, list_type, help, required, NULL);
+}
+
+void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+    ArgType list_type, const char* help, bool required, char suffix_char, char delimiter) {
+    if (!is_list_type(list_type)) return;
+
+    argparse_add_argument_suffix(parser, short_name, long_name, list_type,
+        help, required, NULL, suffix_char);
+
+    /* find and set the delimiter */
+    Argument* arg = parser->arguments;
+    Argument* last = NULL;
+
+    while (arg) {
+        last = arg;
+        arg = arg->next;
+    }
+
+    if (last)
+        last->delimiter = delimiter;
 }
 
 static void parse_single_value(Argument* arg, const char* str_val) {
