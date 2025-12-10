@@ -539,6 +539,23 @@ void argparse_add_argument(ArgParser* parser, char* short_name, const char* long
     }
 }
 
+/* Skip dynamic prefixes for a specific argument.  */
+static inline const char* skip_dynamic_prefix(const char* str) {
+    if (!str) return NULL;
+
+    while (*str && !isalnum((unsigned char)*str))
+        str++;
+
+    return str;
+}
+
+/* Calculate clean name length after skipping prefix. */
+static inline size_t clean_name_length(const char* name) {
+    const char* clean = skip_dynamic_prefix(name);
+    if (!clean) return 0;
+    return strlen(clean);
+}
+
 void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType list_type, const char* help, bool required) {
     argparse_add_argument(parser, short_name, long_name, list_type, help, required, NULL);
