@@ -843,8 +843,19 @@ static void parse_single_value(Argument* arg, const char* str_val) {
     break;
 
     case ARG_BOOL:
-        if (arg->value)
-            *(bool*)arg->value = true;
+        if (arg->value) {
+            /* parse boolean from string value */
+            if (strcmp(str_val, "true") == 0 || strcmp(str_val, "1") == 0 || strcmp(str_val, "") == 0)
+                /* empty string for traditional --verbose */
+                *(bool*)arg->value = true; 
+            else if (strcmp(str_val, "false") == 0 || strcmp(str_val, "0") == 0)
+                *(bool*)arg->value = false;
+            else {
+                fprintf(stderr, "Invalid boolean value: %s (use true/false or 1/0).\n", str_val);
+                exit(EXIT_FAILURE);
+            }
+        }
+
         break;
 
     default:
@@ -884,8 +895,10 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
 
         if (gnu_arg) {
             /* process GNU-style argument */
-            if (gnu_arg->type == ARG_BOOL)
-                parse_single_value(gnu_arg, "");
+            if (gnu_arg->type == ARG_BOOL) {
+                /* pass the actual value for parsing (could be "true", "false", or empty) */
+                parse_single_value(gnu_arg, gnu_value[0] ? gnu_value : "true");
+            }
             else if (gnu_arg->is_list)
                 parse_list_with_delimiter(gnu_arg, gnu_value);
             else
