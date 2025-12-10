@@ -23,7 +23,7 @@ static bool safe_multiply_size_t(size_t a, size_t b, size_t* result) {
 }
 
 /* Return a null-terminated duplicate of the string referenced by str. */
-static char* ap_strdup(const char* str) {
+static char* argparse_strdup(const char* str) {
     if (!str) return NULL;
     size_t len = strlen(str);
     size_t total_size;

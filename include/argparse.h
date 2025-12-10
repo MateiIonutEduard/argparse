@@ -83,7 +83,7 @@ extern "C" {
     void argparse_free_string_list(char*** values, int count);
 
 #ifdef _MSC_VER
-#define strdup ap_strdup
+#define strdup argparse_strdup
 #endif
 
 #ifdef __cplusplus
