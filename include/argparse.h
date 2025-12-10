@@ -31,6 +31,12 @@ extern "C" {
     void argparse_add_argument(ArgParser* parser, char* short_name, const char* long_name,
         ArgType type, const char* help, bool required, void* default_value);
 
+    void argparse_add_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+        ArgType type, const char* help, bool required, void* default_value, char suffix);
+
+    void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+        ArgType list_type, const char* help, bool required, char suffix, char delimiter);
+
     /* Define parsing for a typed command-line list argument. */
     void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
         ArgType list_type, const char* help, bool required);
