@@ -55,7 +55,9 @@ struct Argument {
     bool required;
     bool set;
 
-    /* track if this is a list argument */
+    unsigned char suffix;
+    unsigned char delimiter;
+
     bool is_list;
     Argument* next;
 };
@@ -465,7 +467,10 @@ void argparse_add_argument(ArgParser* parser, char* short_name, const char* long
 
     arg->set = false;
     arg->type = type;
+
     arg->is_list = is_list_type(type);
+    arg->suffix = '\0';     /* No GNU-style by default */
+    arg->delimiter = ' ';   /* Default list delimiter */
 
     /* duplicate strings */
     if (short_name) arg->short_name = strdup(short_name);
