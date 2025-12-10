@@ -55,7 +55,9 @@ struct Argument {
     bool required;
     bool set;
 
-    /* track if this is a list argument */
+    unsigned char suffix;
+    unsigned char delimiter;
+
     bool is_list;
     Argument* next;
 };
@@ -259,6 +261,120 @@ static bool get_safe_double(const char* str, double* out) {
     return true;
 }
 
+/* Parse list values using dynamic delimiter using zero allocations for parsing. */
+static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
+    if (!arg || !value_str || !arg->is_list) {
+        fprintf(stderr, "Invalid list argument.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    /* get dynamic delimiter per argument */
+    const char delimiter = arg->delimiter ? arg->delimiter : ' ';
+    const char* start = value_str;
+
+    const char* end;
+    int count = 0;
+
+    while (*start) {
+        /* skip leading delimiters */
+        while (*start && *start == delimiter) start++;
+        if (!*start) break;
+
+        /* find token end */
+        end = start;
+        while (*end && *end != delimiter) end++;
+
+        const size_t token_len = (size_t)(end - start);
+        if (token_len == 0) break;
+
+        /* parse based on type with minimal allocations */
+        void* parsed_value = NULL;
+        bool valid = false;
+
+        switch (arg->type) {
+        case ARG_INT_LIST: {
+            /* stack buffer for safe parsing */
+            char token_buf[32];
+
+            if (token_len >= sizeof(token_buf))
+                goto invalid_value;
+
+            memcpy(token_buf, start, token_len);
+            token_buf[token_len] = '\0';
+            int* val = (int*)malloc(sizeof(int));
+
+            if (val && get_safe_int(token_buf, val)) {
+                parsed_value = val;
+                valid = true;
+            }
+            else if (val)
+                free(val);
+            break;
+        }
+        case ARG_DOUBLE_LIST: {
+            char token_buf[64];
+            if (token_len >= sizeof(token_buf))
+                goto invalid_value;
+
+            memcpy(token_buf, start, token_len);
+            token_buf[token_len] = '\0';
+            double* val = (double*)malloc(sizeof(double));
+
+            if (val && get_safe_double(token_buf, val)) {
+                parsed_value = val;
+                valid = true;
+            }
+            else if (val)
+                free(val);
+            break;
+        }
+        case ARG_STRING_LIST: {
+            /* strings require allocation anyway */
+            char* val = (char*)malloc(token_len + 1);
+
+            if (val) {
+                memcpy(val, start, token_len);
+                val[token_len] = '\0';
+
+                parsed_value = val;
+                valid = true;
+            }
+
+            break;
+        }
+        default:
+            goto invalid_type;
+        }
+
+        if (valid) {
+            append_to_list(arg, parsed_value);
+            count++;
+        }
+        else {
+            fprintf(stderr, "Invalid list value.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        start = end;
+        continue;
+
+    invalid_value:
+        fprintf(stderr, "List value too long.\n");
+        exit(EXIT_FAILURE);
+
+    invalid_type:
+        fprintf(stderr, "Invalid list type.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (count == 0) {
+        fprintf(stderr, "List requires values.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    arg->set = true;
+}
+
 /* Helper function to parse multiple values for list arguments. */
 static int parse_list_values(ArgParser* parser, Argument* arg,
     int current_index, int argc, char** argv) {
@@ -266,78 +382,84 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
     if (!parser || !arg || !argv)
         return current_index;
 
+    /* get dynamic delimiter */
+    const char delimiter = arg->delimiter 
+        ? arg->delimiter : ' ';
+
     int i = current_index + 1;
     int values_parsed = 0;
 
-    /* parse all subsequent values until hitting another registered argument */
     while (i < argc && !is_argument(parser, argv[i])) {
-        void* value = NULL;
+        const char* value = argv[i];
+
+        /* check if value contains delimiter */
+        if (delimiter != ' ') {
+            const char* delim_pos = strchr(value, delimiter);
+
+            if (delim_pos) {
+                /* parse as delimited string */
+                parse_list_with_delimiter(arg, value);
+
+                values_parsed++; i++;
+                continue;
+            }
+        }
+
+        /* parse as single value */
+        void* parsed_value = NULL;
+        bool valid = false;
 
         switch (arg->type) {
         case ARG_INT_LIST: {
             int* val = (int*)malloc(sizeof(int));
-            int parsed_val = 0;
 
-            if (val != NULL) {
-                if (get_safe_int(argv[i], &parsed_val)) {
-                    *val = parsed_val;
-                    value = val;
-                }
-                else {
-                    free(val);
-                    fprintf(stderr, "Invalid integer value: %s.\n", argv[i]);
-                    exit(EXIT_FAILURE);
-                }
+            if (val && get_safe_int(value, val)) {
+                parsed_value = val;
+                valid = true;
             }
-
+            else if (val)
+                free(val);
             break;
         }
         case ARG_DOUBLE_LIST: {
             double* val = (double*)malloc(sizeof(double));
-            double parsed_val = 0.0;
 
-            if (val != NULL) {
-                if (get_safe_double(argv[i], &parsed_val)) {
-                    *val = parsed_val;
-                    value = val;
-                }
-                else {
-                    free(val);
-                    fprintf(stderr, "Invalid floating-point value: %s.\n", argv[i]);
-                    exit(EXIT_FAILURE);
-                }
+            if (val && get_safe_double(value, val)) {
+                parsed_value = val;
+                valid = true;
+            }
+            else if (val)
+                free(val);
+            break;
+        }
+        case ARG_STRING_LIST: {
+            char* val = strdup(value);
+
+            if (val) {
+                parsed_value = val;
+                valid = true;
             }
 
             break;
         }
-        case ARG_STRING_LIST: {
-            char* val = strdup(argv[i]);
-            if (val) value = val;
-            break;
-        }
         default:
-            /* unknown list type */
             break;
         }
 
-        if (value != NULL) {
-            append_to_list(arg, value);
+        if (valid) {
+            append_to_list(arg, parsed_value);
             values_parsed++;
         }
         else {
-            /* memory allocation failed */
-            fprintf(stderr, "Memory allocation failed for list value.\n");
-            break;
+            fprintf(stderr, "Invalid value: %s.\n", value);
+            exit(EXIT_FAILURE);
         }
 
         i++;
     }
 
-    if (!values_parsed) {
-        fprintf(stderr, "List argument ");
-        if (arg->long_name) fprintf(stderr, "%s", arg->long_name);
-        else if (arg->short_name) fprintf(stderr, "%s", arg->short_name);
-        fprintf(stderr, " requires at least one value.\n");
+    if (values_parsed == 0) {
+        fprintf(stderr, "List argument requires values.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -465,7 +587,10 @@ void argparse_add_argument(ArgParser* parser, char* short_name, const char* long
 
     arg->set = false;
     arg->type = type;
+
     arg->is_list = is_list_type(type);
+    arg->suffix = '\0';     /* No GNU-style by default */
+    arg->delimiter = ' ';   /* Default list delimiter */
 
     /* duplicate strings */
     if (short_name) arg->short_name = strdup(short_name);
@@ -534,9 +659,132 @@ void argparse_add_argument(ArgParser* parser, char* short_name, const char* long
     }
 }
 
+void argparse_add_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+    ArgType type, const char* help, bool required, void* default_value, char suffix) {
+
+    /* use existing memory allocation */
+    argparse_add_argument(parser, short_name, long_name, type, help, required, default_value);
+
+    /* find the last added argument efficiently */
+    Argument* arg = parser->arguments;
+    Argument* last = NULL;
+
+    while (arg) {
+        last = arg;
+        arg = arg->next;
+    }
+
+    if (last)
+        last->suffix = suffix;
+}
+
+/* Skip dynamic prefixes for a specific argument.  */
+static inline const char* skip_dynamic_prefix(const char* str) {
+    if (!str) return NULL;
+
+    while (*str && !isalnum((unsigned char)*str))
+        str++;
+
+    return str;
+}
+
+/* Calculate clean name length after skipping prefix. */
+static inline size_t clean_name_length(const char* name) {
+    const char* clean = skip_dynamic_prefix(name);
+    if (!clean) return 0;
+    return strlen(clean);
+}
+
+/* Single-pass GNU-style argument detector with dynamic suffix. */
+static Argument* is_gnu_argument(ArgParser* parser, const char* arg_str, const char** value_ptr) {
+    if (!parser || !arg_str || !value_ptr) return NULL;
+    Argument* current = parser->arguments;
+
+    while (current) {
+        /* skip arguments without GNU-style enabled */
+        if (current->suffix == 0) {
+            current = current->next;
+            continue;
+        }
+
+        /* look for this argument's specific suffix char */
+        const char* suffix_pos = strchr(arg_str, current->suffix);
+        if (!suffix_pos) {
+            current = current->next;
+            continue;
+        }
+
+        /* calculate total length before suffix */
+        size_t total_len = (size_t)(suffix_pos - arg_str);
+
+        if (total_len == 0) {
+            current = current->next;
+            continue;
+        }
+
+        /* skip prefix to compare clean names */
+        const char* arg_clean = skip_dynamic_prefix(arg_str);
+
+        if (!arg_clean || arg_clean >= suffix_pos) {
+            current = current->next;
+            continue;
+        }
+
+        /* calculate clean name length */
+        size_t clean_len = (size_t)(suffix_pos - arg_clean);
+
+        /* check against short name */
+        if (current->short_name) {
+            const char* short_clean = skip_dynamic_prefix(current->short_name);
+
+            if (short_clean && strlen(short_clean) == clean_len) {
+                if (strncmp(arg_clean, short_clean, clean_len) == 0) {
+                    *value_ptr = suffix_pos + 1;
+                    return current;
+                }
+            }
+        }
+
+        /* check against long name */
+        if (current->long_name) {
+            const char* long_clean = skip_dynamic_prefix(current->long_name);
+            if (long_clean && strlen(long_clean) == clean_len) {
+                if (strncmp(arg_clean, long_clean, clean_len) == 0) {
+                    *value_ptr = suffix_pos + 1;
+                    return current;
+                }
+            }
+        }
+
+        current = current->next;
+    }
+
+    return NULL;
+}
+
 void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType list_type, const char* help, bool required) {
     argparse_add_argument(parser, short_name, long_name, list_type, help, required, NULL);
+}
+
+void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+    ArgType list_type, const char* help, bool required, char suffix, char delimiter) {
+    if (!is_list_type(list_type)) return;
+
+    argparse_add_argument_ex(parser, short_name, long_name, list_type,
+        help, required, NULL, suffix);
+
+    /* find and set the delimiter */
+    Argument* arg = parser->arguments;
+    Argument* last = NULL;
+
+    while (arg) {
+        last = arg;
+        arg = arg->next;
+    }
+
+    if (last)
+        last->delimiter = delimiter;
 }
 
 static void parse_single_value(Argument* arg, const char* str_val) {
@@ -630,6 +878,21 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         const char* current_arg = argv[i];
 
+        /* GNU-style argument detection */
+        const char* gnu_value = NULL;
+        Argument* gnu_arg = is_gnu_argument(parser, current_arg, &gnu_value);
+
+        if (gnu_arg) {
+            /* process GNU-style argument */
+            if (gnu_arg->type == ARG_BOOL)
+                parse_single_value(gnu_arg, "");
+            else if (gnu_arg->is_list)
+                parse_list_with_delimiter(gnu_arg, gnu_value);
+            else
+                parse_single_value(gnu_arg, gnu_value);
+            continue;
+        }
+
         /* handle special help argument by using of exact matching for safety */
         if (is_help_argument(current_arg)) {
             parser->help_requested = true;
@@ -658,7 +921,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
                     parse_single_value(arg, argv[++i]);
                 else {
                     /* next token is another argument */
-                    fprintf(stderr, "Option %s requires a value\n",
+                    fprintf(stderr, "Option %s requires a value.\n",
                         arg->short_name ? arg->short_name :
                         arg->long_name ? arg->long_name : "(unnamed)");
 
@@ -667,7 +930,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
             }
             else {
                 /* no more arguments, but this one needs a value */
-                fprintf(stderr, "Option %s requires a value\n",
+                fprintf(stderr, "Option %s requires a value.\n",
                     arg->short_name ? arg->short_name :
                     arg->long_name ? arg->long_name : "(unnamed)");
 
@@ -686,7 +949,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
 
     while (current != NULL) {
         if (current->required && !current->set) {
-            fprintf(stderr, "Required argument %s not provided\n",
+            fprintf(stderr, "Required argument %s not provided.\n",
                 current->short_name ? current->short_name :
                 current->long_name ? current->long_name : "(unnamed)");
 
