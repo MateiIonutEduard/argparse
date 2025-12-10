@@ -198,6 +198,67 @@ static int list_length(ListNode* head) {
     return count;
 }
 
+static bool get_safe_int(const char* str, int* out) {
+    if (!str || !out) return false;
+
+    /* skip leading whitespace manually */
+    const char* p = str;
+
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == '\0') return false;
+
+    char* endptr; errno = 0;
+    long val = strtol(p, &endptr, 10);
+
+    /* check if any conversion happened */
+    if (endptr == p) return false;
+
+    /* check for trailing non-whitespace chars */
+    while (*endptr != '\0') {
+        if (!isspace((unsigned char)*endptr))
+            return false;
+        endptr++;
+    }
+
+    /* check for overflow / underflow */
+    if (errno == ERANGE) return false;
+
+    /* check if value fits in int */
+    if (val > INT_MAX || val < INT_MIN)
+        return false;
+
+    *out = (int)val;
+    return true;
+}
+
+static bool get_safe_double(const char* str, double* out) {
+    if (!str || !out) return false;
+    const char* p = str;
+
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == '\0') return false;
+
+    char* endptr; errno = 0;
+    double val = strtod(p, &endptr);
+    if (endptr == p) return false;
+
+    /* check for trailing non-whitespace */
+    while (*endptr != '\0') {
+        if (!isspace((unsigned char)*endptr)) return false;
+        endptr++;
+    }
+
+    /* check for math errors */
+    if (errno == ERANGE || errno == EDOM)
+        return false;
+
+    if (fpclassify(val) == FP_INFINITE || fpclassify(val) == FP_NAN)
+        return false;
+
+    *out = val;
+    return true;
+}
+
 /* Helper function to parse multiple values for list arguments. */
 static int parse_list_values(ArgParser* parser, Argument* arg,
     int current_index, int argc, char** argv) {
@@ -215,20 +276,36 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
         switch (arg->type) {
         case ARG_INT_LIST: {
             int* val = (int*)malloc(sizeof(int));
+            int parsed_val = 0;
 
             if (val != NULL) {
-                *val = atoi(argv[i]);
-                value = val;
+                if (get_safe_int(argv[i], &parsed_val)) {
+                    *val = parsed_val;
+                    value = val;
+                }
+                else {
+                    free(val);
+                    fprintf(stderr, "Invalid integer value: %s.\n", argv[i]);
+                    exit(EXIT_FAILURE);
+                }
             }
 
             break;
         }
         case ARG_DOUBLE_LIST: {
             double* val = (double*)malloc(sizeof(double));
+            double parsed_val = 0.0;
 
             if (val != NULL) {
-                *val = atof(argv[i]);
-                value = val;
+                if (get_safe_double(argv[i], &parsed_val)) {
+                    *val = parsed_val;
+                    value = val;
+                }
+                else {
+                    free(val);
+                    fprintf(stderr, "Invalid floating-point value: %s.\n", argv[i]);
+                    exit(EXIT_FAILURE);
+                }
             }
 
             break;
@@ -260,7 +337,7 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
         fprintf(stderr, "List argument ");
         if (arg->long_name) fprintf(stderr, "%s", arg->long_name);
         else if (arg->short_name) fprintf(stderr, "%s", arg->short_name);
-        fprintf(stderr, " requires at least one value\n");
+        fprintf(stderr, " requires at least one value.\n");
         exit(EXIT_FAILURE);
     }
 
@@ -462,67 +539,6 @@ void argparse_add_list_argument(ArgParser* parser, char* short_name, const char*
     argparse_add_argument(parser, short_name, long_name, list_type, help, required, NULL);
 }
 
-static bool get_safe_int(const char* str, int* out) {
-    if (!str || !out) return false;
-
-    /* skip leading whitespace manually */
-    const char* p = str;
-
-    while (isspace((unsigned char)*p)) p++;
-    if (*p == '\0') return false;
-
-    char* endptr; errno = 0;
-    long val = strtol(p, &endptr, 10);
-
-    /* check if any conversion happened */
-    if (endptr == p) return false;
-
-    /* check for trailing non-whitespace chars */
-    while (*endptr != '\0') {
-        if (!isspace((unsigned char)*endptr)) 
-            return false;
-        endptr++;
-    }
-
-    /* check for overflow / underflow */
-    if (errno == ERANGE) return false;
-
-    /* check if value fits in int */
-    if (val > INT_MAX || val < INT_MIN) 
-        return false;
-
-    *out = (int)val;
-    return true;
-}
-
-static bool get_safe_double(const char* str, double* out) {
-    if (!str || !out) return false;
-    const char* p = str;
-
-    while (isspace((unsigned char)*p)) p++;
-    if (*p == '\0') return false;
-
-    char* endptr; errno = 0;
-    double val = strtod(p, &endptr);
-    if (endptr == p) return false;
-
-    /* check for trailing non-whitespace */
-    while (*endptr != '\0') {
-        if (!isspace((unsigned char)*endptr)) return false;
-        endptr++;
-    }
-
-    /* check for math errors */
-    if (errno == ERANGE || errno == EDOM)
-        return false;
-
-    if (fpclassify(val) == FP_INFINITE || fpclassify(val) == FP_NAN)
-        return false;
-
-    *out = val;
-    return true;
-}
-
 static void parse_single_value(Argument* arg, const char* str_val) {
     if (!arg || !str_val)
         return;
@@ -682,7 +698,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
 }
 
 bool argparse_get_bool(ArgParser* parser, char* name) {
-    if (parser == NULL) return 0;
+    if (parser == NULL) return false;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(bool*)arg->value : false;
 }
@@ -694,13 +710,13 @@ int argparse_get_int(ArgParser* parser, char* name) {
 }
 
 double argparse_get_double(ArgParser* parser, char* name) {
-    if (parser == NULL) return 0;
+    if (parser == NULL) return 0.0;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(double*)arg->value : 0.0;
 }
 
 const char* argparse_get_string(ArgParser* parser, char* name) {
-    if (parser == NULL) return 0;
+    if (parser == NULL) return NULL;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? (const char*)arg->value : NULL;
 }

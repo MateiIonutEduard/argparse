@@ -35,7 +35,7 @@ extern "C" {
     void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
         ArgType list_type, const char* help, bool required);
 
-    /* Parse command-line arguments and store them in the ArgParser instance. */
+    /* Parse the command-line arguments and store them in the ArgParser instance. */
     void argparse_parse(ArgParser* parser, int argc, char** argv);
 
     /* Display the help message and exit. */
