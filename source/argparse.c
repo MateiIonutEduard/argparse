@@ -833,6 +833,21 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         const char* current_arg = argv[i];
 
+        /* GNU-style argument detection */
+        const char* gnu_value = NULL;
+        Argument* gnu_arg = detect_gnu_argument(parser, current_arg, &gnu_value);
+
+        if (gnu_arg) {
+            /* process GNU-style argument */
+            if (gnu_arg->type == ARG_BOOL)
+                parse_single_value(gnu_arg, "");
+            else if (gnu_arg->is_list)
+                parse_list_with_delimiter(gnu_arg, gnu_value);
+            else
+                parse_single_value(gnu_arg, gnu_value);
+            continue;
+        }
+
         /* handle special help argument by using of exact matching for safety */
         if (is_help_argument(current_arg)) {
             parser->help_requested = true;
