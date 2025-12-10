@@ -31,15 +31,17 @@ extern "C" {
     void argparse_add_argument(ArgParser* parser, char* short_name, const char* long_name,
         ArgType type, const char* help, bool required, void* default_value);
 
+    /* Define a command-line argument with configurable GNU-style suffix support. */
     void argparse_add_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
         ArgType type, const char* help, bool required, void* default_value, char suffix);
-
-    void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
-        ArgType list_type, const char* help, bool required, char suffix, char delimiter);
 
     /* Define parsing for a typed command-line list argument. */
     void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
         ArgType list_type, const char* help, bool required);
+
+    /* Define a command-line list argument with full GNU-style configuration. */
+    void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+        ArgType list_type, const char* help, bool required, char suffix, char delimiter);
 
     /* Parse the command-line arguments and store them in the ArgParser instance. */
     void argparse_parse(ArgParser* parser, int argc, char** argv);

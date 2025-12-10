@@ -921,7 +921,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
                     parse_single_value(arg, argv[++i]);
                 else {
                     /* next token is another argument */
-                    fprintf(stderr, "Option %s requires a value\n",
+                    fprintf(stderr, "Option %s requires a value.\n",
                         arg->short_name ? arg->short_name :
                         arg->long_name ? arg->long_name : "(unnamed)");
 
@@ -930,7 +930,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
             }
             else {
                 /* no more arguments, but this one needs a value */
-                fprintf(stderr, "Option %s requires a value\n",
+                fprintf(stderr, "Option %s requires a value.\n",
                     arg->short_name ? arg->short_name :
                     arg->long_name ? arg->long_name : "(unnamed)");
 
@@ -949,7 +949,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
 
     while (current != NULL) {
         if (current->required && !current->set) {
-            fprintf(stderr, "Required argument %s not provided\n",
+            fprintf(stderr, "Required argument %s not provided.\n",
                 current->short_name ? current->short_name :
                 current->long_name ? current->long_name : "(unnamed)");
 
