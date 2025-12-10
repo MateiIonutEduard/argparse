@@ -623,6 +623,120 @@ static Argument* is_gnu_argument(ArgParser* parser, const char* arg_str, const c
     return NULL;
 }
 
+/* Parse list values using dynamic delimiter using zero allocations for parsing. */
+static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
+    if (!arg || !value_str || !arg->is_list) {
+        fprintf(stderr, "Invalid list argument\n");
+        exit(EXIT_FAILURE);
+    }
+
+    /* get dynamic delimiter per argument */
+    const char delimiter = arg->delimiter ? arg->delimiter : ' ';
+    const char* start = value_str;
+
+    const char* end;
+    int count = 0;
+
+    while (*start) {
+        /* skip leading delimiters */
+        while (*start && *start == delimiter) start++;
+        if (!*start) break;
+
+        /* find token end */
+        end = start;
+        while (*end && *end != delimiter) end++;
+
+        const size_t token_len = (size_t)(end - start);
+        if (token_len == 0) break;
+
+        /* parse based on type with minimal allocations */
+        void* parsed_value = NULL;
+        bool valid = false;
+
+        switch (arg->type) {
+        case ARG_INT_LIST: {
+            /* stack buffer for safe parsing */
+            char token_buf[32];
+
+            if (token_len >= sizeof(token_buf)) 
+                goto invalid_value;
+
+            memcpy(token_buf, start, token_len);
+            token_buf[token_len] = '\0';
+            int* val = (int*)malloc(sizeof(int));
+
+            if (val && get_safe_int(token_buf, val)) {
+                parsed_value = val;
+                valid = true;
+            }
+            else if (val)
+                free(val);
+            break;
+        }
+        case ARG_DOUBLE_LIST: {
+            char token_buf[64];
+            if (token_len >= sizeof(token_buf)) 
+                goto invalid_value;
+
+            memcpy(token_buf, start, token_len);
+            token_buf[token_len] = '\0';
+            double* val = (double*)malloc(sizeof(double));
+
+            if (val && get_safe_double(token_buf, val)) {
+                parsed_value = val;
+                valid = true;
+            }
+            else if (val)
+                free(val);
+            break;
+        }
+        case ARG_STRING_LIST: {
+            /* strings require allocation anyway */
+            char* val = (char*)malloc(token_len + 1);
+
+            if (val) {
+                memcpy(val, start, token_len);
+                val[token_len] = '\0';
+
+                parsed_value = val;
+                valid = true;
+            }
+
+            break;
+        }
+        default:
+            goto invalid_type;
+        }
+
+        if (valid) {
+            append_to_list(arg, parsed_value);
+            count++;
+        }
+        else {
+            fprintf(stderr, "Invalid list value.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        start = end;
+        continue;
+
+    invalid_value:
+        fprintf(stderr, "List value too long.\n");
+        exit(EXIT_FAILURE);
+
+    invalid_type:
+        fprintf(stderr, "Invalid list type.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (count == 0) {
+        fprintf(stderr, "List requires values.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    arg->set = true;
+}
+
 void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType list_type, const char* help, bool required) {
     argparse_add_argument(parser, short_name, long_name, list_type, help, required, NULL);
