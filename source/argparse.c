@@ -556,6 +556,73 @@ static inline size_t clean_name_length(const char* name) {
     return strlen(clean);
 }
 
+/* Single-pass GNU-style argument detector with dynamic suffix. */
+static Argument* is_gnu_argument(ArgParser* parser, const char* arg_str, const char** value_ptr) {
+    if (!parser || !arg_str || !value_ptr) return NULL;
+    Argument* current = parser->arguments;
+
+    while (current) {
+        /* skip arguments without GNU-style enabled */
+        if (current->suffix == 0) {
+            current = current->next;
+            continue;
+        }
+
+        /* look for this argument's specific suffix char */
+        const char* suffix_pos = strchr(arg_str, current->suffix);
+        if (!suffix_pos) {
+            current = current->next;
+            continue;
+        }
+
+        /* calculate total length before suffix */
+        size_t total_len = (size_t)(suffix_pos - arg_str);
+
+        if (total_len == 0) {
+            current = current->next;
+            continue;
+        }
+
+        /* skip prefix to compare clean names */
+        const char* arg_clean = skip_dynamic_prefix(arg_str);
+
+        if (!arg_clean || arg_clean >= suffix_pos) {
+            current = current->next;
+            continue;
+        }
+
+        /* calculate clean name length */
+        size_t clean_len = (size_t)(suffix_pos - arg_clean);
+
+        /* check against short name */
+        if (current->short_name) {
+            const char* short_clean = skip_dynamic_prefix(current->short_name);
+
+            if (short_clean && strlen(short_clean) == clean_len) {
+                if (strncmp(arg_clean, short_clean, clean_len) == 0) {
+                    *value_ptr = suffix_pos + 1;
+                    return current;
+                }
+            }
+        }
+
+        /* check against long name */
+        if (current->long_name) {
+            const char* long_clean = skip_dynamic_prefix(current->long_name);
+            if (long_clean && strlen(long_clean) == clean_len) {
+                if (strncmp(arg_clean, long_clean, clean_len) == 0) {
+                    *value_ptr = suffix_pos + 1;
+                    return current;
+                }
+            }
+        }
+
+        current = current->next;
+    }
+
+    return NULL;
+}
+
 void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType list_type, const char* help, bool required) {
     argparse_add_argument(parser, short_name, long_name, list_type, help, required, NULL);
