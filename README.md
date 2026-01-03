@@ -10,7 +10,7 @@
 It mimics Python’s `argparse` interface while focusing on performance, simplicity, and type safety.
 
 **Features:**
-- 🪶 Header + source file (`argparse.h` + `argparse.c`) — simple integration into your project.  
+- 🪶 Headers + source files — simple integration into your project.  
 - 🔒 Type-safe — argument types enforced at compile-time.  
 - ⚡ Fast & minimal — suitable for embedded or low-overhead applications.  
 - 🧠 Python-like interface — expressive and readable API.  
