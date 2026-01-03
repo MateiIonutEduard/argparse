@@ -191,16 +191,34 @@ static void* create_default_value(ArgType type) {
 }
 
 static void append_to_list(Argument* arg, void* value) {
+    /* validate inputs */
     if (!arg || !value) return;
     ListNode** head = (ListNode**)arg->value;
+
+    if (!head) {
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+
+        APE_SET(APE_INTERNAL, EINVAL, arg_name,
+            "List head pointer is NULL.");
+        return;
+    }
+
     ListNode** tail_ptr = head;
 
     /* find the last next pointer */
-    while (*tail_ptr)
-        tail_ptr = &(*tail_ptr)->next;
-
+    while (*tail_ptr) tail_ptr = &(*tail_ptr)->next;
     ListNode* new_node = (ListNode*)malloc(sizeof(ListNode));
-    if (!new_node) return;
+
+    if (!new_node) {
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+
+        APE_SET_MEMORY(arg_name);
+        return;
+    }
 
     new_node->data = value;
     new_node->next = NULL;
@@ -518,12 +536,22 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
 }
 
 ArgParser* argparse_new(const char* description) {
+    /* clear any existing errors */
+    argparse_error_clear();
     ArgParser* parser = (ArgParser*)calloc(1, sizeof(ArgParser));
+
     if (!parser) {
         APE_SET_MEMORY(NULL);
         return NULL;
     }
 
+    /* initialize all fields */
+    parser->arguments = NULL;
+    parser->program_name = NULL;
+    parser->help_requested = false;
+    parser->help_added = true;
+
+    /* set the description */
     if (description) {
         parser->description = strdup(description);
 
@@ -533,17 +561,19 @@ ArgParser* argparse_new(const char* description) {
             return NULL;
         }
     }
-
-    parser->arguments = NULL;
-    parser->program_name = NULL;
-
-    parser->description = description ? strdup(description) : NULL;
-    parser->help_requested = false;
-    parser->help_added = true;
+    else
+        parser->description = NULL;
 
     /* automatically add help argument */
     argparse_add_argument(parser, "-h", "--help", ARG_BOOL,
         "Show this help message and exit", false, NULL);
+
+    /* check if help argument addition failed */
+    if (argparse_error_occurred()) {
+        argparse_free(parser);
+        return NULL;
+    }
+
     return parser;
 }
 
