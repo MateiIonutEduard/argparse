@@ -787,10 +787,25 @@ void argparse_add_list_argument(ArgParser* parser, char* short_name, const char*
 
 void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
     ArgType list_type, const char* help, bool required, char suffix, char delimiter) {
-    if (!is_list_type(list_type)) return;
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return;
+    }
+
+    if (!is_list_type(list_type)) {
+        const char* arg_name = short_name ? short_name :
+            long_name ? long_name : "(unnamed)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name, "Invalid list type.");
+        return;
+    }
 
     argparse_add_argument_ex(parser, short_name, long_name, list_type,
         help, required, NULL, suffix);
+
+    if (argparse_error_occurred())
+        return;
 
     /* find and set the delimiter */
     Argument* arg = parser->arguments;
@@ -803,9 +818,16 @@ void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const ch
 
     if (last)
         last->delimiter = delimiter;
+    else {
+        const char* arg_name = short_name ? short_name :
+            long_name ? long_name : "(unnamed)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name, "No arguments in parser.");
+    }
 }
 
 static void parse_single_value(Argument* arg, const char* str_val) {
+    argparse_error_clear();
+
     /* validate the inputs */
     if (!arg || !str_val) {
         const char* arg_name = arg ? (arg->long_name ? arg->long_name :
