@@ -30,7 +30,7 @@ LIBRARY_NAME := libargparse
 STATIC_LIB := $(LIBRARY_NAME).a
 
 # Source files
-SRCS := argparse.c
+SRCS := argparse.c argparse_error.c
 OBJS := $(SRCS:.c=.o)
 
 # OS-specific settings
@@ -78,7 +78,7 @@ $(STATIC_LIB): $(OBJS)
 	@echo "Built: $@"
 
 # Compile source files
-%.o: %.c argparse.h
+%.o: %.c argparse.h argparse_error.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Clean build artifacts
