@@ -281,9 +281,15 @@ static bool get_safe_double(const char* str, double* out) {
 
 /* Parse list values using dynamic delimiter using zero allocations for parsing. */
 static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
+    /* clear any existing errors */
+    argparse_error_clear();
+
     if (!arg || !value_str || !arg->is_list) {
-        fprintf(stderr, "Invalid list argument.\n");
-        exit(EXIT_FAILURE);
+        const char* arg_name = arg ? (arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)") : "(null)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name, "Invalid list argument.");
+        return;
     }
 
     /* get dynamic delimiter per argument */
@@ -314,8 +320,13 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
             /* stack buffer for safe parsing */
             char token_buf[32];
 
-            if (token_len >= sizeof(token_buf))
-                goto invalid_value;
+            if (token_len >= sizeof(token_buf)) {
+                const char* arg_name = arg->long_name ? arg->long_name :
+                    arg->short_name ? arg->short_name :
+                    "(unnamed)";
+                APE_SET(APE_RANGE, ERANGE, arg_name, "List value too long for integer parsing.");
+                return;
+            }
 
             memcpy(token_buf, start, token_len);
             token_buf[token_len] = '\0';
@@ -331,8 +342,13 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
         }
         case ARG_DOUBLE_LIST: {
             char token_buf[64];
-            if (token_len >= sizeof(token_buf))
-                goto invalid_value;
+            if (token_len >= sizeof(token_buf)) {
+                const char* arg_name = arg->long_name ? arg->long_name :
+                    arg->short_name ? arg->short_name :
+                    "(unnamed)";
+                APE_SET(APE_RANGE, ERANGE, arg_name, "List value too long for double parsing.");
+                return;
+            }
 
             memcpy(token_buf, start, token_len);
             token_buf[token_len] = '\0';
@@ -353,15 +369,20 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
             if (val) {
                 memcpy(val, start, token_len);
                 val[token_len] = '\0';
-
                 parsed_value = val;
                 valid = true;
             }
 
             break;
         }
-        default:
-            goto invalid_type;
+        default: {
+            const char* arg_name = arg->long_name ? arg->long_name :
+                arg->short_name ? arg->short_name :
+                "(unnamed)";
+            APE_SET(APE_INTERNAL, EINVAL, arg_name, "Invalid list type.");
+
+            return;
+        }
         }
 
         if (valid) {
@@ -369,25 +390,22 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
             count++;
         }
         else {
-            fprintf(stderr, "Invalid list value.\n");
-            exit(EXIT_FAILURE);
+            const char* arg_name = arg->long_name ? arg->long_name :
+                arg->short_name ? arg->short_name :
+                "(unnamed)";
+            APE_SET(APE_TYPE, EINVAL, arg_name, "Invalid list value.");
+            return;
         }
 
         start = end;
-        continue;
-
-    invalid_value:
-        fprintf(stderr, "List value too long.\n");
-        exit(EXIT_FAILURE);
-
-    invalid_type:
-        fprintf(stderr, "Invalid list type.\n");
-        exit(EXIT_FAILURE);
     }
 
     if (count == 0) {
-        fprintf(stderr, "List requires values.\n");
-        exit(EXIT_FAILURE);
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+        APE_SET(APE_SYNTAX, EINVAL, arg_name, "List requires values.");
+        return;
     }
 
     arg->set = true;
