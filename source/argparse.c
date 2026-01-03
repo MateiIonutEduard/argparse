@@ -519,7 +519,21 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
 
 ArgParser* argparse_new(const char* description) {
     ArgParser* parser = (ArgParser*)calloc(1, sizeof(ArgParser));
-    if (!parser) return NULL;
+    if (!parser) {
+        APE_SET_MEMORY(NULL);
+        return NULL;
+    }
+
+    if (description) {
+        parser->description = strdup(description);
+
+        if (!parser->description) {
+            APE_SET_MEMORY(NULL);
+            free(parser);
+            return NULL;
+        }
+    }
+
     parser->arguments = NULL;
     parser->program_name = NULL;
 
@@ -753,9 +767,16 @@ void argparse_add_argument(ArgParser* parser, char* short_name, const char* long
 
 void argparse_add_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
     ArgType type, const char* help, bool required, void* default_value, char suffix) {
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return;
+    }
 
     /* use existing memory allocation */
     argparse_add_argument(parser, short_name, long_name, type, help, required, default_value);
+    if (argparse_error_occurred()) return;
 
     /* find the last added argument efficiently */
     Argument* arg = parser->arguments;
@@ -856,6 +877,13 @@ static Argument* is_gnu_argument(ArgParser* parser, const char* arg_str, const c
 
 void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType list_type, const char* help, bool required) {
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return;
+    }
+
     argparse_add_argument(parser, short_name, long_name, list_type, help, required, NULL);
 }
 
