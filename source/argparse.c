@@ -1409,13 +1409,13 @@ int argparse_get_string_list(ArgParser* parser, char* name, char*** values) {
     return count;
 }
 
-void argparse_free_int_list(int** values, int count) {
+void argparse_free_int_list(int** values) {
     if (!values || !*values) return;
     free(*values);
     *values = NULL;
 }
 
-void argparse_free_double_list(double** values, int count) {
+void argparse_free_double_list(double** values) {
     if (!values || !*values) return;
     free(*values);
     *values = NULL;
