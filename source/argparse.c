@@ -1184,6 +1184,9 @@ int argparse_get_list_count(ArgParser* parser, char* name) {
 }
 
 int argparse_get_int_list(ArgParser* parser, char* name, int** values) {
+    /* clear any existing errors */
+    argparse_error_clear();
+
     /* check inputs first */
     if (!parser || !name || !values)
         return 0;
@@ -1214,7 +1217,7 @@ int argparse_get_int_list(ArgParser* parser, char* name, int** values) {
     int* array = (int*)malloc((size_t)count * sizeof(int));
 
     if (!array) {
-        fprintf(stderr, "Memory allocation failed for int list.\n");
+        APE_SET_MEMORY(name);
         *values = NULL;
         return 0;
     }
@@ -1227,7 +1230,7 @@ int argparse_get_int_list(ArgParser* parser, char* name, int** values) {
         if (current->data != NULL)
             array[i] = *(int*)current->data;
         else array[i] = 0;
-        
+
         current = current->next;
         i++;
     }
