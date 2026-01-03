@@ -1286,6 +1286,9 @@ int argparse_get_double_list(ArgParser* parser, char* name, double** values) {
 }
 
 int argparse_get_string_list(ArgParser* parser, char* name, char*** values) {
+    /* clear any existing errors */
+    argparse_error_clear();
+
     /* validate input params */
     if (!parser || !name || !values)
         return 0;
@@ -1309,7 +1312,7 @@ int argparse_get_string_list(ArgParser* parser, char* name, char*** values) {
     char** string_array = (char**)malloc((size_t)count * sizeof(char*));
 
     if (!string_array) {
-        fprintf(stderr, "Memory allocation failed for string list.\n");
+        APE_SET_MEMORY(name);
         *values = NULL;
         return 0;
     }
@@ -1326,11 +1329,11 @@ int argparse_get_string_list(ArgParser* parser, char* name, char*** values) {
 
             if (!string_array[i]) {
                 /* clean up on failure and return */
-                fprintf(stderr, "Memory allocation failed for string list element.\n");
+                APE_SET_MEMORY(name);
 
                 for (int j = 0; j < i; j++)
                     free(string_array[j]);
-                
+
                 free(string_array);
                 *values = NULL;
                 return 0;
@@ -1339,6 +1342,7 @@ int argparse_get_string_list(ArgParser* parser, char* name, char*** values) {
         else
             /* handle NULL strings in the list */
             string_array[i] = NULL;
+
         current = current->next;
         i++;
     }
