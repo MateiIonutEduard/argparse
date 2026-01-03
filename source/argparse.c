@@ -580,39 +580,53 @@ static bool is_help_argument(const char* arg_name) {
 
 void argparse_add_argument(ArgParser* parser, char* short_name, const char* long_name,
     ArgType type, const char* help, bool required, void* default_value) {
+    argparse_error_clear();
 
     /* validate parser parameter */
-    if (!parser) return;
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return;
+    }
 
     /* don't add duplicate help arguments, but use exact matching */
     if (!parser->help_added && ((short_name && is_help_argument(short_name)) ||
         (long_name && is_help_argument(long_name))))
         return;
 
+    /* validate argument names */
+    if ((!short_name || short_name[0] == '\0') &&
+        (!long_name || long_name[0] == '\0')) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL,
+            "Both short and long names are empty.");
+        return;
+    }
+
+    /* get argument name for error reporting */
+    const char* arg_name = short_name ? short_name :
+        long_name ? long_name : "(unnamed)";
+
     /* alloc argument structure */
     Argument* arg = (Argument*)malloc(sizeof(Argument));
-    if (!arg) return;
+    if (!arg) {
+        APE_SET_MEMORY(arg_name);
+        return;
+    }
 
     /* init all fields to known state */
     arg->short_name = NULL;
     arg->long_name = NULL;
-
     arg->help = NULL;
     arg->value = NULL;
-
     arg->next = NULL;
     arg->required = required;
-
     arg->set = false;
     arg->type = type;
-
     arg->is_list = is_list_type(type);
     arg->suffix = '\0';     /* No GNU-style by default */
     arg->delimiter = ' ';   /* Default list delimiter */
 
     /* duplicate strings */
     if (short_name) arg->short_name = strdup(short_name);
-
     if (long_name) arg->long_name = strdup(long_name);
     if (help) arg->help = strdup(help);
 
@@ -621,54 +635,82 @@ void argparse_add_argument(ArgParser* parser, char* short_name, const char* long
         switch (type) {
         case ARG_INT:
             arg->value = (int*)malloc(sizeof(int));
-            if (arg->value) *(int*)arg->value = *(int*)default_value;
+            if (arg->value) {
+                *(int*)arg->value = *(int*)default_value;
+            }
+            else {
+                APE_SET_MEMORY(arg_name);
+                free_argument(arg);
+                return;
+            }
             break;
 
         case ARG_DOUBLE:
             arg->value = (double*)malloc(sizeof(double));
-            if (arg->value) *(double*)arg->value = *(double*)default_value;
+            if (arg->value) {
+                *(double*)arg->value = *(double*)default_value;
+            }
+            else {
+                APE_SET_MEMORY(arg_name);
+                free_argument(arg);
+                return;
+            }
             break;
 
         case ARG_STRING:
             arg->value = strdup((char*)default_value);
+            if (!arg->value && default_value) {
+                APE_SET_MEMORY(arg_name);
+                free_argument(arg);
+                return;
+            }
             break;
 
         case ARG_BOOL:
             arg->value = (bool*)malloc(sizeof(bool));
-            if (arg->value) *(bool*)arg->value = *(bool*)default_value;
+            if (arg->value) {
+                *(bool*)arg->value = *(bool*)default_value;
+            }
+            else {
+                APE_SET_MEMORY(arg_name);
+                free_argument(arg);
+                return;
+            }
             break;
 
         default:
             /* for lists or unknown types */
             arg->value = create_default_value(type);
+            if (!arg->value && type != ARG_STRING) {
+                APE_SET_MEMORY(arg_name);
+                free_argument(arg);
+                return;
+            }
             break;
         }
     }
-    else
+    else {
         arg->value = create_default_value(type);
+        if (!arg->value && type != ARG_STRING) {
+            APE_SET_MEMORY(arg_name);
+            free_argument(arg);
+            return;
+        }
+    }
 
-    /* check if alloc fails */
-    bool allocation_failed = false;
-
-    /* check string allocations */
+    /* check if string allocations failed */
     if ((short_name && !arg->short_name) ||
         (long_name && !arg->long_name) ||
-        (help && !arg->help))
-        allocation_failed = true;
-
-    /* check value allocation */
-    if (!arg->value && type != ARG_STRING)
-        allocation_failed = true;
-
-    /* clean up on failure and return */
-    if (allocation_failed) {
+        (help && !arg->help)) {
+        APE_SET_MEMORY(arg_name);
         free_argument(arg);
         return;
     }
 
     /* add to linked list; maintain tail pointer for O(1) appends */
-    if (parser->arguments == NULL)
+    if (parser->arguments == NULL) {
         parser->arguments = arg;
+    }
     else {
         /* find tail pointer */
         Argument* tail = parser->arguments;
@@ -804,6 +846,7 @@ void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const ch
     argparse_add_argument_ex(parser, short_name, long_name, list_type,
         help, required, NULL, suffix);
 
+    /* an existing error is thrown, stop the execution */
     if (argparse_error_occurred())
         return;
 
