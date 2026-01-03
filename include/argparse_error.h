@@ -104,7 +104,7 @@ extern "C" {
     argparse_error_set((cat), (err), __func__, __LINE__, (arg), (msg))
 
 #define APE_SET_MEMORY(arg) \
-    APE_SET(APE_MEMORY, ENOMEM, (arg), "Memory allocation failed")
+    APE_SET(APE_MEMORY, ENOMEM, (arg), "Memory allocation failed.")
 
 #define APE_SET_SYNTAX(arg, msg) \
     APE_SET(APE_SYNTAX, EINVAL, (arg), (msg))
@@ -113,16 +113,16 @@ extern "C" {
     APE_SET(APE_TYPE, EINVAL, (arg), (msg))
 
 #define APE_SET_REQUIRED(arg) \
-    APE_SET(APE_REQUIRED, EINVAL, (arg), "Required argument not provided")
+    APE_SET(APE_REQUIRED, EINVAL, (arg), "Required argument not provided.")
 
 #define APE_SET_RANGE(arg, msg) \
     APE_SET(APE_RANGE, ERANGE, (arg), (msg))
 
 #define APE_SET_UNKNOWN(arg) \
-    APE_SET(APE_UNKNOWN_ARG, EINVAL, (arg), "Unknown argument")
+    APE_SET(APE_UNKNOWN_ARG, EINVAL, (arg), "Unknown argument.")
 
 #define APE_SET_DUPLICATE(arg) \
-    APE_SET(APE_DUPLICATE, EEXIST, (arg), "Duplicate argument definition")
+    APE_SET(APE_DUPLICATE, EEXIST, (arg), "Duplicate argument definition.")
 
 #ifdef __cplusplus
 }

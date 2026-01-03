@@ -82,6 +82,12 @@ extern "C" {
     /* Free the memory of the string list parameter. */
     void argparse_free_string_list(char*** values, int count);
 
+    int argparse_get_last_error(void);
+
+    const char* argparse_get_last_error_message(void);
+
+    void argparse_clear_error(void);
+
 #ifdef _MSC_VER
 #define strdup argparse_strdup
 #endif

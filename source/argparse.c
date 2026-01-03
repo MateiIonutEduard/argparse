@@ -7,16 +7,32 @@
 #include <limits.h>
 #include <ctype.h>
 
+#define APE_RETURN_IF_ERROR(parser) \
+    if (argparse_error_occurred()) { \
+        if (argparse_error_is_fatal()) { \
+            argparse_print_help(parser); \
+            exit(EXIT_FAILURE); \
+        } \
+        return; \
+    }
+
 static bool safe_add_size_t(size_t a, size_t b, size_t* result) {
     /* would overflow */
-    if (a > SIZE_MAX - b) return false;
+    if (a > SIZE_MAX - b) {
+        APE_SET(APE_RANGE, EOVERFLOW, NULL, "Size addition overflow.");
+        return false;
+    }
+
     *result = a + b;
     return true;
 }
 
 static bool safe_multiply_size_t(size_t a, size_t b, size_t* result) {
     /* would overflow */
-    if (a > 0 && b > SIZE_MAX / a) return false;
+    if (a > 0 && b > SIZE_MAX / a) {
+        APE_SET(APE_RANGE, EOVERFLOW, NULL, "Size multiplication overflow.");
+        return false;
+    }
     
     *result = a * b;
     return true;
@@ -28,11 +44,13 @@ static char* argparse_strdup(const char* str) {
     size_t len = strlen(str);
     size_t total_size;
 
-    if (!safe_add_size_t(len, 1, &total_size))
-        return NULL;
-
+    if (!safe_add_size_t(len, 1, &total_size)) return NULL;
     char* copy = (char*)malloc(total_size);
-    if (!copy) return NULL;
+
+    if (!copy) {
+        APE_SET_MEMORY(NULL);
+        return NULL;
+    }
 
     memcpy(copy, str, total_size);
     return copy;
@@ -869,20 +887,32 @@ static void parse_single_value(Argument* arg, const char* str_val) {
 }
 
 void argparse_parse(ArgParser* parser, int argc, char** argv) {
+    argparse_error_clear();
+
     /* check for valid inputs */
-    if (!parser || !argv)
+    if (!parser || !argv) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Invalid parser or argv.");
+        APE_RETURN_IF_ERROR(parser);
         return;
+    }
 
     /* store program name */
     if (parser->program_name != NULL)
         free(parser->program_name);
-    
+
     parser->program_name = strdup(argv[0]);
+    if (!parser->program_name) {
+        APE_SET_MEMORY("program_name");
+        APE_RETURN_IF_ERROR(parser);
+        return;
+    }
 
     /* check if no arguments were provided */
     if (argc == 1) {
         argparse_print_help(parser);
-        exit(EXIT_SUCCESS);
+        APE_SET(APE_HELP_REQUESTED, 0, NULL, "No arguments provided, showing help.");
+        APE_RETURN_IF_ERROR(parser);
+        return;
     }
 
     /* process command line arguments */
@@ -896,79 +926,95 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
         if (gnu_arg) {
             /* process GNU-style argument */
             if (gnu_arg->type == ARG_BOOL) {
-                /* pass the actual value for parsing (could be "true", "false", or empty) */
                 parse_single_value(gnu_arg, gnu_value[0] ? gnu_value : "true");
+                APE_RETURN_IF_ERROR(parser);
             }
-            else if (gnu_arg->is_list)
+            else if (gnu_arg->is_list) {
                 parse_list_with_delimiter(gnu_arg, gnu_value);
-            else
+                APE_RETURN_IF_ERROR(parser);
+            }
+            else {
                 parse_single_value(gnu_arg, gnu_value);
+                APE_RETURN_IF_ERROR(parser);
+            }
             continue;
         }
 
-        /* handle special help argument by using of exact matching for safety */
+        /* handle special help argument */
         if (is_help_argument(current_arg)) {
             parser->help_requested = true;
             argparse_print_help(parser);
-            exit(EXIT_SUCCESS);
+            APE_SET(APE_HELP_REQUESTED, 0, NULL, "Help requested by user.");
+            APE_RETURN_IF_ERROR(parser);
+            return;
         }
+
         /* check if this is a registered argument */
-        else if (is_argument(parser, current_arg)) {
+        if (is_argument(parser, current_arg)) {
             /* find the argument */
             Argument* arg = find_argument(parser, (char*)current_arg);
             if (!arg) arg = find_argument_by_long_name(parser, current_arg);
 
             if (!arg) {
-                fprintf(stderr, "Internal error: Argument not found.\n");
-                exit(EXIT_FAILURE);
+                APE_SET(APE_INTERNAL, EINVAL, current_arg,
+                    "Argument found in registry but internal lookup failed.");
+                APE_RETURN_IF_ERROR(parser);
+                return;
             }
 
             /* process the argument based on its type */
-            if (arg->type == ARG_BOOL)
+            if (arg->type == ARG_BOOL) {
                 parse_single_value(arg, "");
-            else if (arg->is_list)
+                APE_RETURN_IF_ERROR(parser);
+            }
+            else if (arg->is_list) {
                 i = parse_list_values(parser, arg, i, argc, argv);
+                APE_RETURN_IF_ERROR(parser);
+            }
             else if (i + 1 < argc) {
                 /* check if next token is not a registered argument */
-                if (!is_argument(parser, argv[i + 1]))
+                if (!is_argument(parser, argv[i + 1])) {
                     parse_single_value(arg, argv[++i]);
+                    APE_RETURN_IF_ERROR(parser);
+                }
                 else {
-                    /* next token is another argument */
-                    fprintf(stderr, "Option %s requires a value.\n",
-                        arg->short_name ? arg->short_name :
-                        arg->long_name ? arg->long_name : "(unnamed)");
-
-                    exit(EXIT_FAILURE);
+                    APE_SET(APE_SYNTAX, EINVAL,
+                        arg->short_name ? arg->short_name : arg->long_name,
+                        "Option requires a value.");
+                    APE_RETURN_IF_ERROR(parser);
+                    return;
                 }
             }
             else {
-                /* no more arguments, but this one needs a value */
-                fprintf(stderr, "Option %s requires a value.\n",
-                    arg->short_name ? arg->short_name :
-                    arg->long_name ? arg->long_name : "(unnamed)");
-
-                exit(EXIT_FAILURE);
+                APE_SET(APE_SYNTAX, EINVAL,
+                    arg->short_name ? arg->short_name : arg->long_name,
+                    "Option requires a value but none provided.");
+                APE_RETURN_IF_ERROR(parser);
+                return;
             }
         }
         else {
-            /* not a registered argument, it's only a value without preceding option */
-            fprintf(stderr, "Unexpected value: %s (did you forget an option?)\n", current_arg);
-            exit(EXIT_FAILURE);
+            /* not a registered argument */
+            APE_SET(APE_SYNTAX, EINVAL, current_arg,
+                "Unexpected value (did you forget an option?).");
+            APE_RETURN_IF_ERROR(parser);
+            return;
         }
     }
 
     /* validate required arguments */
     Argument* current = parser->arguments;
-
     while (current != NULL) {
         if (current->required && !current->set) {
-            fprintf(stderr, "Required argument %s not provided.\n",
-                current->short_name ? current->short_name :
-                current->long_name ? current->long_name : "(unnamed)");
+            const char* arg_name = current->short_name ? current->short_name :
+                current->long_name ? current->long_name :
+                "(unnamed)";
 
-            exit(EXIT_FAILURE);
+            APE_SET(APE_REQUIRED, EINVAL, arg_name,
+                "Required argument not provided.");
+            APE_RETURN_IF_ERROR(parser);
+            return;
         }
-
         current = current->next;
     }
 }
@@ -1242,8 +1288,23 @@ void argparse_print_help(ArgParser* parser) {
     }
 }
 
+int argparse_get_last_error(void) {
+    return argparse_error_get_errno();
+}
+
+const char* argparse_get_last_error_message(void) {
+    return argparse_error_get_message();
+}
+
+void argparse_clear_error(void) {
+    argparse_error_clear();
+}
+
 void argparse_free(ArgParser* parser) {
     if (!parser) return;
+
+    /* clean up error system for this thread */
+    argparse_error_clear();
     Argument* current = parser->arguments;
 
     while (current) {
