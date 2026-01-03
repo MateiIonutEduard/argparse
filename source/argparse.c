@@ -1240,6 +1240,9 @@ int argparse_get_int_list(ArgParser* parser, char* name, int** values) {
 }
 
 int argparse_get_double_list(ArgParser* parser, char* name, double** values) {
+    /* clear any existing errors */
+    argparse_error_clear();
+
     /* validate inputs */
     if (!parser || !name || !values)
         return 0;
@@ -1263,7 +1266,7 @@ int argparse_get_double_list(ArgParser* parser, char* name, double** values) {
     double* array = (double*)malloc((size_t)count * sizeof(double));
 
     if (array == NULL) {
-        fprintf(stderr, "Memory allocation failed for double list.\n");
+        APE_SET_MEMORY(name);
         *values = NULL;
         return 0;
     }
