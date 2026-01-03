@@ -414,12 +414,16 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
 /* Helper function to parse multiple values for list arguments. */
 static int parse_list_values(ArgParser* parser, Argument* arg,
     int current_index, int argc, char** argv) {
+
+    /* clear any existing errors */
+    argparse_error_clear();
+
     /* validate inputs */
     if (!parser || !arg || !argv)
         return current_index;
 
-    /* get dynamic delimiter */
-    const char delimiter = arg->delimiter 
+    /* get the dynamic delimiter */
+    const char delimiter = arg->delimiter
         ? arg->delimiter : ' ';
 
     int i = current_index + 1;
@@ -436,7 +440,12 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
                 /* parse as delimited string */
                 parse_list_with_delimiter(arg, value);
 
-                values_parsed++; i++;
+                /* check if parse_list_with_delimiter failed */
+                if (argparse_error_occurred())
+                    return current_index;
+
+                values_parsed++;
+                i++;
                 continue;
             }
         }
@@ -475,7 +484,6 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
                 parsed_value = val;
                 valid = true;
             }
-
             break;
         }
         default:
@@ -487,16 +495,22 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
             values_parsed++;
         }
         else {
-            fprintf(stderr, "Invalid value: %s.\n", value);
-            exit(EXIT_FAILURE);
+            const char* arg_name = arg->long_name ? arg->long_name :
+                arg->short_name ? arg->short_name :
+                "(unnamed)";
+            APE_SET(APE_TYPE, EINVAL, arg_name, "Invalid list value.");
+            return current_index;
         }
 
         i++;
     }
 
     if (values_parsed == 0) {
-        fprintf(stderr, "List argument requires values.\n");
-        exit(EXIT_FAILURE);
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+        APE_SET(APE_SYNTAX, EINVAL, arg_name, "List argument requires values.");
+        return current_index;
     }
 
     arg->set = true;
