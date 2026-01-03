@@ -7,7 +7,11 @@
 extern "C" {
 #endif
 
-    typedef enum {
+    typedef enum ArgType ArgType;
+    typedef struct Argument Argument;
+    typedef struct ArgParser ArgParser;
+
+    enum ArgType {
         ARG_INT,
         ARG_DOUBLE,
         ARG_STRING,
@@ -15,11 +19,34 @@ extern "C" {
         ARG_INT_LIST,
         ARG_DOUBLE_LIST,
         ARG_STRING_LIST
-    } ArgType;
+    };
 
-    typedef struct Argument Argument;
-    typedef struct ArgParser ArgParser;
-    typedef enum ArgType ArgType;
+    struct Argument {
+        char* short_name;
+        char* long_name;
+
+        char* help;
+        ArgType type;
+
+        void* value;
+        bool required;
+        bool set;
+
+        unsigned char suffix;
+        unsigned char delimiter;
+
+        bool is_list;
+        Argument* next;
+    };
+
+    struct ArgParser {
+        Argument* arguments;
+        char* program_name;
+
+        char* description;
+        bool help_requested;
+        bool help_added;
+    };
 
     /**
      * @brief Creates and initializes a new argument parser instance. 
@@ -44,7 +71,7 @@ extern "C" {
      * @param required Whether argument must be provided
      * @param default_value Default value if not provided (type-specific, can be NULL)
      */
-    void argparse_add_argument(ArgParser* parser, char* short_name, const char* long_name,
+    void argparse_add_argument(ArgParser* parser, const char* short_name, const char* long_name,
         ArgType type, const char* help, bool required, void* default_value);
 
     /**
@@ -52,7 +79,7 @@ extern "C" {
      * @param All parameters from argparse_add_argument function
      * @param suffix Delimiter character between argument name and value (e.g., '=')
      */
-    void argparse_add_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+    void argparse_add_argument_ex(ArgParser* parser, const char* short_name, const char* long_name,
         ArgType type, const char* help, bool required, void* default_value, char suffix);
 
     /**
@@ -60,7 +87,7 @@ extern "C" {
      * @param All Same parameters as into the base function
      * @param list_type Must be one of these types: ARG_INT_LIST, ARG_DOUBLE_LIST, ARG_STRING_LIST
      */
-    void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
+    void argparse_add_list_argument(ArgParser* parser, const char* short_name, const char* long_name,
         ArgType list_type, const char* help, bool required);
 
     /** 
@@ -69,7 +96,7 @@ extern "C" {
      * @param suffix GNU-style suffix character (see argparse_add_argument_ex)
      * @param delimiter Character separating values within a single argument
      */
-    void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+    void argparse_add_list_argument_ex(ArgParser* parser, const char* short_name, const char* long_name,
         ArgType list_type, const char* help, bool required, char suffix, char delimiter);
 
     /**
@@ -92,7 +119,7 @@ extern "C" {
      * @param Argument name (short or long form)
      * @return Boolean value (false if not set or error).
      */
-    bool argparse_get_bool(ArgParser* parser, char* name);
+    bool argparse_get_bool(ArgParser* parser, const char* name);
 
     /**
      * @brief Retrieves integer argument value.
@@ -100,7 +127,7 @@ extern "C" {
      * @param Argument name (short or long form)
      * @return Integer value (0 if not set or error).
      */
-    int argparse_get_int(ArgParser* parser, char* name);
+    int argparse_get_int(ArgParser* parser, const char* name);
 
     /**
      * @brief Retrieves double-precision floating-point value.
@@ -108,7 +135,7 @@ extern "C" {
      * @param Argument name (short or long form)
      * @return Double value (0.0 if not set or error).
      */
-    double argparse_get_double(ArgParser* parser, char* name);
+    double argparse_get_double(ArgParser* parser, const char* name);
 
     /**
      * @brief Retrieves string argument value.
@@ -116,7 +143,7 @@ extern "C" {
      * @param Argument name (short or long form)
      * @return String pointer (NULL if not set or error).
      */
-    const char* argparse_get_string(ArgParser* parser, char* name);
+    const char* argparse_get_string(ArgParser* parser, const char* name);
 
     /**
      * @brief Returns number of elements in a list argument.
@@ -124,7 +151,7 @@ extern "C" {
      * @param name List argument name
      * @return Element count (0 if empty, not found, or error).
      */
-    int argparse_get_list_count(ArgParser* parser, char* name);
+    int argparse_get_list_count(ArgParser* parser, const char* name);
 
     /**
      * @brief Retrieves integer list as dynamically allocated array.
@@ -133,7 +160,7 @@ extern "C" {
      * @param values Pointer to receive allocated array
      * @return Number of elements retrieved (0 on error).
      */
-    int argparse_get_int_list(ArgParser* parser, char* name, int** values);
+    int argparse_get_int_list(ArgParser* parser, const char* name, int** values);
 
     /**
      * @brief Retrieves double list as dynamically allocated array.
@@ -142,7 +169,7 @@ extern "C" {
      * @param values Pointer to receive allocated array
      * @return Number of elements retrieved (0 on error).
      */
-    int argparse_get_double_list(ArgParser* parser, char* name, double** values);
+    int argparse_get_double_list(ArgParser* parser, const char* name, double** values);
 
     /**
      * @brief Retrieves string list as dynamically allocated array of strings.
@@ -151,7 +178,7 @@ extern "C" {
      * @param values Pointer to receive allocated array
      * @return Number of elements retrieved (0 on error).
      */
-    int argparse_get_string_list(ArgParser* parser, char* name, char*** values);
+    int argparse_get_string_list(ArgParser* parser, const char* name, char*** values);
 
     /** 
      * @brief Frees memory allocated by argparse_get_int_list().

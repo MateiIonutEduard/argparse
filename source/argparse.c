@@ -62,34 +62,7 @@ typedef struct ListNode {
     struct ListNode* next;
 } ListNode;
 
-struct Argument {
-    char* short_name;
-    char* long_name;
-
-    char* help;
-    ArgType type;
-
-    void* value;
-    bool required;
-    bool set;
-
-    unsigned char suffix;
-    unsigned char delimiter;
-
-    bool is_list;
-    Argument* next;
-};
-
-struct ArgParser {
-    Argument* arguments;
-    char* program_name;
-
-    char* description;
-    bool help_requested;
-    bool help_added;
-};
-
-static Argument* find_argument(ArgParser* parser, char* name) {
+static Argument* find_argument(ArgParser* parser, const char* name) {
     /* early return for invalid cases */
     if (!parser || !name || name[0] == '\0')
         return NULL;
@@ -654,7 +627,7 @@ static bool is_help_argument(const char* arg_name) {
     return false;
 }
 
-void argparse_add_argument(ArgParser* parser, char* short_name, const char* long_name,
+void argparse_add_argument(ArgParser* parser, const char* short_name, const char* long_name,
     ArgType type, const char* help, bool required, void* default_value) {
     argparse_error_clear();
 
@@ -795,7 +768,7 @@ void argparse_add_argument(ArgParser* parser, char* short_name, const char* long
     }
 }
 
-void argparse_add_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+void argparse_add_argument_ex(ArgParser* parser, const char* short_name, const char* long_name,
     ArgType type, const char* help, bool required, void* default_value, char suffix) {
     argparse_error_clear();
 
@@ -905,7 +878,7 @@ static Argument* is_gnu_argument(ArgParser* parser, const char* arg_str, const c
     return NULL;
 }
 
-void argparse_add_list_argument(ArgParser* parser, char* short_name, const char* long_name,
+void argparse_add_list_argument(ArgParser* parser, const char* short_name, const char* long_name,
     ArgType list_type, const char* help, bool required) {
     argparse_error_clear();
 
@@ -917,7 +890,7 @@ void argparse_add_list_argument(ArgParser* parser, char* short_name, const char*
     argparse_add_argument(parser, short_name, long_name, list_type, help, required, NULL);
 }
 
-void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const char* long_name,
+void argparse_add_list_argument_ex(ArgParser* parser, const char* short_name, const char* long_name,
     ArgType list_type, const char* help, bool required, char suffix, char delimiter) {
     argparse_error_clear();
 
@@ -1208,31 +1181,31 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
     }
 }
 
-bool argparse_get_bool(ArgParser* parser, char* name) {
+bool argparse_get_bool(ArgParser* parser, const char* name) {
     if (parser == NULL) return false;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(bool*)arg->value : false;
 }
 
-int argparse_get_int(ArgParser* parser, char* name) {
+int argparse_get_int(ArgParser* parser, const char* name) {
     if (parser == NULL) return 0;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(int*)arg->value : 0;
 }
 
-double argparse_get_double(ArgParser* parser, char* name) {
+double argparse_get_double(ArgParser* parser, const char* name) {
     if (parser == NULL) return 0.0;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? *(double*)arg->value : 0.0;
 }
 
-const char* argparse_get_string(ArgParser* parser, char* name) {
+const char* argparse_get_string(ArgParser* parser, const char* name) {
     if (parser == NULL) return NULL;
     Argument* arg = find_argument(parser, name);
     return arg && arg->set ? (const char*)arg->value : NULL;
 }
 
-int argparse_get_list_count(ArgParser* parser, char* name) {
+int argparse_get_list_count(ArgParser* parser, const char* name) {
     if (parser == NULL) return 0;
     Argument* arg = find_argument(parser, name);
     if (!arg || !arg->set) return 0;
@@ -1241,7 +1214,7 @@ int argparse_get_list_count(ArgParser* parser, char* name) {
     return list_length(head);
 }
 
-int argparse_get_int_list(ArgParser* parser, char* name, int** values) {
+int argparse_get_int_list(ArgParser* parser, const char* name, int** values) {
     /* clear any existing errors */
     argparse_error_clear();
 
@@ -1297,7 +1270,7 @@ int argparse_get_int_list(ArgParser* parser, char* name, int** values) {
     return count;
 }
 
-int argparse_get_double_list(ArgParser* parser, char* name, double** values) {
+int argparse_get_double_list(ArgParser* parser, const char* name, double** values) {
     /* clear any existing errors */
     argparse_error_clear();
 
@@ -1343,7 +1316,7 @@ int argparse_get_double_list(ArgParser* parser, char* name, double** values) {
     return count;
 }
 
-int argparse_get_string_list(ArgParser* parser, char* name, char*** values) {
+int argparse_get_string_list(ArgParser* parser, const char* name, char*** values) {
     /* clear any existing errors */
     argparse_error_clear();
 
