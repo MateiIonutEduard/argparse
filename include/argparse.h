@@ -2,7 +2,7 @@
 #define ARGPARSE_H
 
 #include <stdbool.h>
-
+#include "argparse_error.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
