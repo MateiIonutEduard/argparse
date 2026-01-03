@@ -806,14 +806,30 @@ void argparse_add_list_argument_ex(ArgParser* parser, char* short_name, const ch
 }
 
 static void parse_single_value(Argument* arg, const char* str_val) {
-    if (!arg || !str_val)
+    /* validate the inputs */
+    if (!arg || !str_val) {
+        const char* arg_name = arg ? (arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)") : "(null)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name,
+            "Invalid argument or value pointer.");
         return;
-
-    /* validate that it is not processing a list argument here */
-    if (is_list_type(arg->type)) {
-        fprintf(stderr, "Internal error: list argument processed in parse_single_value.\n");
-        exit(EXIT_FAILURE);
     }
+
+    /* validate that it is not processing a list argument */
+    if (is_list_type(arg->type)) {
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name,
+            "List argument processed in parse_single_value.");
+        return;
+    }
+
+    /* get argument name for error reporting */
+    const char* arg_name = arg->long_name ? arg->long_name :
+        arg->short_name ? arg->short_name :
+        "(unnamed)";
 
     /* handle each argument type with proper error checking */
     switch (arg->type) {
@@ -822,11 +838,17 @@ static void parse_single_value(Argument* arg, const char* str_val) {
             int parsed_val = 0;
 
             if (!get_safe_int(str_val, &parsed_val)) {
-                fprintf(stderr, "Invalid integer value: %s.\n", str_val);
-                exit(EXIT_FAILURE);
+                APE_SET(APE_TYPE, EINVAL, arg_name,
+                    "Invalid integer value.");
+                return;
             }
 
             *(int*)arg->value = parsed_val;
+        }
+        else {
+            APE_SET(APE_INTERNAL, EINVAL, arg_name,
+                "Argument value pointer is NULL.");
+            return;
         }
         break;
 
@@ -835,52 +857,64 @@ static void parse_single_value(Argument* arg, const char* str_val) {
             double parsed_val = 0.0;
 
             if (!get_safe_double(str_val, &parsed_val)) {
-                fprintf(stderr, "Invalid floating-point value: %s.\n", str_val);
-                exit(EXIT_FAILURE);
+                APE_SET(APE_TYPE, EINVAL, arg_name,
+                    "Invalid floating-point value.");
+                return;
             }
 
             *(double*)arg->value = parsed_val;
         }
-
+        else {
+            APE_SET(APE_INTERNAL, EINVAL, arg_name,
+                "Argument value pointer is NULL.");
+            return;
+        }
         break;
 
-    case ARG_STRING: 
-    {
+    case ARG_STRING: {
         char* new_value = strdup(str_val);
-
         if (!new_value) {
-            fprintf(stderr, "Memory allocation failed for string value.\n");
-            exit(EXIT_FAILURE);
+            APE_SET_MEMORY(arg_name);
+            return;
         }
 
+        /* Free previous value if it exists */
         if (arg->value)
             free(arg->value);
 
         arg->value = new_value;
+        break;
     }
-    break;
 
     case ARG_BOOL:
         if (arg->value) {
             /* parse boolean from string value */
-            if (strcmp(str_val, "true") == 0 || strcmp(str_val, "1") == 0 || strcmp(str_val, "") == 0)
-                /* empty string for traditional --verbose */
-                *(bool*)arg->value = true; 
-            else if (strcmp(str_val, "false") == 0 || strcmp(str_val, "0") == 0)
+            if (strcmp(str_val, "true") == 0 ||
+                strcmp(str_val, "1") == 0 ||
+                strcmp(str_val, "") == 0)
+                *(bool*)arg->value = true;
+            else if (strcmp(str_val, "false") == 0 ||
+                strcmp(str_val, "0") == 0) {
                 *(bool*)arg->value = false;
+            }
             else {
-                fprintf(stderr, "Invalid boolean value: %s (use true/false or 1/0).\n", str_val);
-                exit(EXIT_FAILURE);
+                APE_SET(APE_TYPE, EINVAL, arg_name,
+                    "Invalid boolean value (use true/false or 1/0).");
+                return;
             }
         }
-
+        else {
+            APE_SET(APE_INTERNAL, EINVAL, arg_name,
+                "Argument value pointer is NULL.");
+            return;
+        }
         break;
 
     default:
-        /* unknown argument type */
-        fprintf(stderr, "Internal error: unknown argument type in parse_single_value.\n");
-        exit(EXIT_FAILURE);
-        break;
+        /* Unknown argument type */
+        APE_SET(APE_INTERNAL, EINVAL, arg_name,
+            "Unknown argument type.");
+        return;
     }
 
     arg->set = true;
