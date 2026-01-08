@@ -186,31 +186,32 @@ Argument* argparse_hash_lookup_internal(ArgHashTable* table, const char* key) {
     return NULL;
 }
 
-void argparse_hash_build_if_needed(ArgParser* parser) {
-    if (!parser) return;
+bool ensure_hash_table_built(ArgParser* parser) {
+    if (!parser || parser->hash_table)
+        return true;
 
-    /* already built or not enough arguments */
-    if (parser->hash_enabled || parser->argument_count < ARGPARSE_HASH_THRESHOLD)
-        return;
+    if (parser->argument_count < ARGPARSE_HASH_THRESHOLD)
+        return false;
 
-    /* create the hash table */
     parser->hash_table = argparse_hash_create_internal();
-    if (!parser->hash_table) return;
 
-    /* build hash table from all arguments */
-    Argument* arg = parser->arguments;
+    if (!parser->hash_table) {
+        APE_SET(APE_MEMORY, ENOMEM, NULL, "Failed to create hash table.");
+        return false;
+    }
 
-    while (arg) {
-        if (arg->short_name)
-            argparse_hash_insert_internal(parser->hash_table, arg->short_name, arg);
-        
-        if (arg->long_name)
-            argparse_hash_insert_internal(parser->hash_table, arg->long_name, arg);
-        
-        arg = arg->next;
+    Argument* current = parser->arguments;
+
+    while (current) {
+        if (current->short_name)
+            argparse_hash_insert_internal(parser->hash_table, current->short_name, current);
+        if (current->long_name)
+            argparse_hash_insert_internal(parser->hash_table, current->long_name, current);
+        current = current->next;
     }
 
     parser->hash_enabled = true;
+    return true;
 }
 
 Argument* argparse_hash_find_argument(ArgParser* parser, const char* name) {

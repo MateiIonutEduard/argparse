@@ -34,7 +34,7 @@ extern "C" {
     void argparse_hash_destroy_internal(ArgHashTable* table);
     bool argparse_hash_insert_internal(ArgHashTable* table, const char* key, Argument* arg);
     Argument* argparse_hash_lookup_internal(ArgHashTable* table, const char* key);
-    void argparse_hash_build_if_needed(ArgParser* parser);
+    bool ensure_hash_table_built(ArgParser* parser);
     Argument* argparse_hash_find_argument(ArgParser* parser, const char* name);
     bool argparse_hash_is_argument(ArgParser* parser, const char* str);
 

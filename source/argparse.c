@@ -57,41 +57,22 @@ static char* argparse_strdup(const char* str) {
     return copy;
 }
 
-static void ensure_hash_table_built(ArgParser* parser) {
-    if (!parser || parser->hash_table) return;
-
-    /* only build if threshold reached */
-    if (parser->argument_count < ARGPARSE_HASH_THRESHOLD) return;
-
-    parser->hash_table = argparse_hash_create_internal();
-    if (!parser->hash_table) return;
-
-    /* build from all existing arguments */
-    Argument* current = parser->arguments;
-    while (current) {
-        if (current->short_name)
-            argparse_hash_insert_internal(parser->hash_table, current->short_name, current);
-        if (current->long_name)
-            argparse_hash_insert_internal(parser->hash_table, current->long_name, current);
-        current = current->next;
-    }
-
-    parser->hash_enabled = true;
-}
-
 static void insert_argument_into_hash_table(ArgParser* parser, Argument* arg) {
     if (!parser || !arg) return;
 
-    /* insert into existing hash table */
-    if (parser->hash_table) {
-        if (arg->short_name) argparse_hash_insert_internal(parser->hash_table, arg->short_name, arg);
-        if (arg->long_name) argparse_hash_insert_internal(parser->hash_table, arg->long_name, arg);
-    }
-
-    /* check if we need to build hash table now */
     parser->argument_count++;
 
-    if (!parser->hash_table && parser->argument_count >= ARGPARSE_HASH_THRESHOLD)
+    /* insert into hash table if it exists */
+    if (parser->hash_table) {
+        if (arg->short_name)
+            argparse_hash_insert_internal(parser->hash_table, arg->short_name, arg);
+
+        if (arg->long_name)
+            argparse_hash_insert_internal(parser->hash_table, arg->long_name, arg);
+    }
+
+    /* build hash table when threshold reached */
+    else if (parser->argument_count >= ARGPARSE_HASH_THRESHOLD)
         ensure_hash_table_built(parser);
 }
 
@@ -100,36 +81,6 @@ typedef struct ListNode {
     void* data;
     struct ListNode* next;
 } ListNode;
-
-static Argument* find_argument(ArgParser* parser, const char* name) {
-    /* the hash function handles both cases internally now */
-    return argparse_hash_find_argument(parser, name);
-}
-
-static bool is_argument(ArgParser* parser, const char* str) {
-    /* the hash utility handle both cases efficiently */
-    return argparse_hash_is_argument(parser, str);
-}
-
-static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_name) {
-    /* use hash lookup first if available */
-    Argument* arg = argparse_hash_find_argument(parser, long_name);
-
-    /* verify it's actually a long name match */
-    if (arg && arg->long_name && strcmp(arg->long_name, long_name) == 0)
-        return arg;
-
-    /* if hash missed or wrong match, do targeted search */
-    arg = parser->arguments;
-
-    while (arg) {
-        if (arg->long_name && strcmp(arg->long_name, long_name) == 0)
-            return arg;
-        arg = arg->next;
-    }
-
-    return NULL;
-}
 
 static bool is_list_type(ArgType type) {
     return ((type == ARG_INT_LIST)
@@ -433,7 +384,7 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
     int i = current_index + 1;
     int values_parsed = 0;
 
-    while (i < argc && !is_argument(parser, argv[i])) {
+    while (i < argc && !argparse_hash_find_argument(parser, argv[i])) {
         const char* value = argv[i];
 
         /* check if value contains delimiter */
@@ -1087,20 +1038,11 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
             return;
         }
 
-        /* check if this is a registered argument */
-        if (is_argument(parser, current_arg)) {
-            /* find the argument */
-            Argument* arg = find_argument(parser, (char*)current_arg);
-            if (!arg) arg = find_argument_by_long_name(parser, current_arg);
+        /* single efficient lookup */
+        Argument* arg = argparse_hash_find_argument(parser, current_arg);
 
-            if (!arg) {
-                APE_SET(APE_INTERNAL, EINVAL, current_arg,
-                    "Argument found in registry but internal lookup failed.");
-                APE_RETURN_IF_ERROR(parser);
-                return;
-            }
-
-            /* process the argument based on its type */
+        if (arg) {
+            /* Found argument, process based on type */
             if (arg->type == ARG_BOOL) {
                 parse_single_value(arg, "");
                 APE_RETURN_IF_ERROR(parser);
@@ -1111,7 +1053,7 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
             }
             else if (i + 1 < argc) {
                 /* check if next token is not a registered argument */
-                if (!is_argument(parser, argv[i + 1])) {
+                if (!argparse_hash_is_argument(parser, argv[i + 1])) {
                     parse_single_value(arg, argv[++i]);
                     APE_RETURN_IF_ERROR(parser);
                 }
@@ -1159,31 +1101,31 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
 
 bool argparse_get_bool(ArgParser* parser, const char* name) {
     if (parser == NULL) return false;
-    Argument* arg = find_argument(parser, name);
+    Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? *(bool*)arg->value : false;
 }
 
 int argparse_get_int(ArgParser* parser, const char* name) {
     if (parser == NULL) return 0;
-    Argument* arg = find_argument(parser, name);
+    Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? *(int*)arg->value : 0;
 }
 
 double argparse_get_double(ArgParser* parser, const char* name) {
     if (parser == NULL) return 0.0;
-    Argument* arg = find_argument(parser, name);
+    Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? *(double*)arg->value : 0.0;
 }
 
 const char* argparse_get_string(ArgParser* parser, const char* name) {
     if (parser == NULL) return NULL;
-    Argument* arg = find_argument(parser, name);
+    Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? (const char*)arg->value : NULL;
 }
 
 int argparse_get_list_count(ArgParser* parser, const char* name) {
     if (parser == NULL) return 0;
-    Argument* arg = find_argument(parser, name);
+    Argument* arg = argparse_hash_find_argument(parser, name);
     if (!arg || !arg->set) return 0;
 
     ListNode* head = *(ListNode**)arg->value;
@@ -1199,7 +1141,7 @@ int argparse_get_int_list(ArgParser* parser, const char* name, int** values) {
         return 0;
 
     /* find the argument */
-    Argument* arg = find_argument(parser, name);
+    Argument* arg = argparse_hash_find_argument(parser, name);
 
     if (!arg || !arg->set || arg->type != ARG_INT_LIST)
         return 0;
@@ -1255,7 +1197,7 @@ int argparse_get_double_list(ArgParser* parser, const char* name, double** value
         return 0;
 
     /* find the argument */
-    Argument* arg = find_argument(parser, name);
+    Argument* arg = argparse_hash_find_argument(parser, name);
 
     if (!arg || !arg->set || arg->type != ARG_DOUBLE_LIST)
         return 0;
@@ -1301,7 +1243,7 @@ int argparse_get_string_list(ArgParser* parser, const char* name, char*** values
         return 0;
 
     /* find the argument */
-    Argument* arg = find_argument(parser, name);
+    Argument* arg = argparse_hash_find_argument(parser, name);
 
     if (!arg || !arg->set || arg->type != ARG_STRING_LIST)
         return 0;
