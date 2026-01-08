@@ -57,6 +57,30 @@ static char* argparse_strdup(const char* str) {
     return copy;
 }
 
+static void ensure_hash_table_built(ArgParser* parser) {
+    if (!parser) return;
+
+    if (!parser->hash_table && parser->argument_count >= ARGPARSE_HASH_THRESHOLD) {
+        parser->hash_table = argparse_hash_create_internal();
+        if (!parser->hash_table) return;
+
+        /* build from existing arguments */
+        Argument* current = parser->arguments;
+
+        while (current) {
+            if (current->short_name)
+                argparse_hash_insert_internal(parser->hash_table,
+                    current->short_name, current);
+            if (current->long_name)
+                argparse_hash_insert_internal(parser->hash_table,
+                    current->long_name, current);
+            current = current->next;
+        }
+
+        parser->hash_enabled = true;
+    }
+}
+
 /* Internal list node structure */
 typedef struct ListNode {
     void* data;
@@ -544,7 +568,7 @@ ArgParser* argparse_new(const char* description) {
 
     /* initialize hash table fields */
     parser->hash_table = argparse_hash_create_internal();
-    parser->argument_count = 1;
+    parser->argument_count = 0;
     parser->hash_enabled = false;
 
     /* set the description */
@@ -779,14 +803,13 @@ void argparse_add_argument(ArgParser* parser, const char* short_name, const char
         return;
     }
 
-    /* add to hash table immediately if enabled */
-    if (parser->hash_enabled && parser->hash_table) {
-        if (arg->short_name)
-            argparse_hash_insert_internal(parser->hash_table, arg->short_name, arg);
-        
-        if (arg->long_name)
-            argparse_hash_insert_internal(parser->hash_table, arg->long_name, arg);
+    /* insert into hash table if it exists */
+    if (parser->hash_table) {
+        if (arg->short_name) argparse_hash_insert_internal(parser->hash_table, arg->short_name, arg);
+        if (arg->long_name) argparse_hash_insert_internal(parser->hash_table, arg->long_name, arg);
     }
+
+    parser->argument_count++;
 
     /* add to linked list; maintain tail pointer for O(1) appends */
     if (parser->arguments == NULL)
@@ -801,26 +824,9 @@ void argparse_add_argument(ArgParser* parser, const char* short_name, const char
     /* update argument count and auto-enable hash table at threshold */
     parser->argument_count++;
 
-    /* auto-enable hash table after threshold */
-    if (!parser->hash_enabled && 
-        parser->argument_count >= ARGPARSE_HASH_THRESHOLD) {
-        parser->hash_enabled = true;
-
-        /* rebuild hash table with all existing arguments */
-        if (parser->hash_table) {
-            Argument* current = parser->arguments;
-
-            while (current) {
-                if (current->short_name)
-                    argparse_hash_insert_internal(parser->hash_table, current->short_name, current);
-
-                if (current->long_name)
-                    argparse_hash_insert_internal(parser->hash_table, current->long_name, current);
-                
-                current = current->next;
-            }
-        }
-    }
+    // Build hash table when threshold reached
+    if (!parser->hash_enabled && parser->argument_count >= ARGPARSE_HASH_THRESHOLD)
+        ensure_hash_table_built(parser);
 }
 
 void argparse_add_argument_ex(ArgParser* parser, const char* short_name, const char* long_name,
@@ -1533,8 +1539,11 @@ void argparse_free(ArgParser* parser) {
     /* clean up error system for this thread */
     argparse_error_clear();
 
-    if (parser->hash_table) 
+    if (parser->hash_table) {
         argparse_hash_destroy_internal(parser->hash_table);
+        parser->hash_table = NULL;
+    }
+
     Argument* current = parser->arguments;
 
     while (current) {
