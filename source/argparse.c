@@ -67,6 +67,11 @@ static Argument* find_argument(ArgParser* parser, const char* name) {
     if (!parser || !name || name[0] == '\0')
         return NULL;
 
+    if (parser->hash_enabled && parser->hash_table) {
+        Argument* arg = argparse_hash_lookup(parser->hash_table, name);
+        if (arg) return arg;
+    }
+
     Argument* arg = parser->arguments;
 
     while (arg != NULL) {
