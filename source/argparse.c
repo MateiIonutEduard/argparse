@@ -778,15 +778,47 @@ void argparse_add_argument(ArgParser* parser, const char* short_name, const char
         return;
     }
 
-    /* add to linked list; maintain tail pointer for O(1) appends */
-    if (parser->arguments == NULL) {
-        parser->arguments = arg;
+    /* add to hash table immediately if enabled */
+    if (parser->hash_enabled && parser->hash_table) {
+        if (arg->short_name)
+            argparse_hash_insert_internal(parser->hash_table, arg->short_name, arg);
+        
+        if (arg->long_name)
+            argparse_hash_insert_internal(parser->hash_table, arg->long_name, arg);
     }
+
+    /* add to linked list; maintain tail pointer for O(1) appends */
+    if (parser->arguments == NULL)
+        parser->arguments = arg;
     else {
         /* find tail pointer */
         Argument* tail = parser->arguments;
         while (tail->next) tail = tail->next;
         tail->next = arg;
+    }
+
+    /* update argument count and auto-enable hash table at threshold */
+    parser->argument_count++;
+
+    /* auto-enable hash table after threshold */
+    if (!parser->hash_enabled && 
+        parser->argument_count >= ARGPARSE_HASH_THRESHOLD) {
+        parser->hash_enabled = true;
+
+        /* rebuild hash table with all existing arguments */
+        if (parser->hash_table) {
+            Argument* current = parser->arguments;
+
+            while (current) {
+                if (current->short_name)
+                    argparse_hash_insert_internal(parser->hash_table, current->short_name, current);
+
+                if (current->long_name)
+                    argparse_hash_insert_internal(parser->hash_table, current->long_name, current);
+                
+                current = current->next;
+            }
+        }
     }
 }
 
