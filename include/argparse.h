@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include "argparse_error.h"
+#include "argparse_hash.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -46,6 +47,10 @@ extern "C" {
         char* description;
         bool help_requested;
         bool help_added;
+
+        ArgHashTable* hash_table;
+        size_t argument_count;
+        bool hash_enabled;
     };
 
     /**
