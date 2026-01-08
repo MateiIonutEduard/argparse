@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include "argparse_error.h"
+#include "argparse_hash.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -46,7 +47,19 @@ extern "C" {
         char* description;
         bool help_requested;
         bool help_added;
+
+        ArgHashTable* hash_table;
+        size_t argument_count;
+        bool hash_enabled;
     };
+
+    /** 
+     * @brief Safe strdup() alternative with overflow protection and error reporting.
+     * @param str Source string to duplicate. May be NULL (returns NULL)
+     * @return - Success: Pointer to newly allocated string duplicate (caller-owned)
+     * @return - Failure: NULL with error state set (APE_MEMORY or APE_RANGE)
+     */
+    char* argparse_strdup(const char* str);
 
     /**
      * @brief Creates and initializes a new argument parser instance. 
