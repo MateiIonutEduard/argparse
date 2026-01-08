@@ -116,19 +116,20 @@ static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_
     if (!parser || !long_name || long_name[0] == '\0')
         return NULL;
 
+    /* single hash lookup if enabled */
+    if (parser->hash_enabled && parser->hash_table) {
+        Argument* arg = argparse_hash_lookup_internal(parser->hash_table, long_name);
+
+        if (arg && arg->long_name && strcmp(arg->long_name, long_name) == 0)
+            return arg;
+    }
+
+    /* linear search for long names only */
     Argument* arg = parser->arguments;
-
-    if (!is_argument(parser, long_name))
-        return NULL;
-
-    /* use hash table for efficiency */
-    if (parser->hash_enabled && parser->hash_table)
-        return argparse_hash_lookup(parser->hash_table, long_name);
 
     while (arg != NULL) {
         if (arg->long_name != NULL && strcmp(arg->long_name, long_name) == 0)
             return arg;
-        
         arg = arg->next;
     }
 
