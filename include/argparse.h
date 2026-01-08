@@ -53,6 +53,9 @@ extern "C" {
         bool hash_enabled;
     };
 
+    /* @brief Return a null-terminated duplicate of the string referenced by str. */
+    char* argparse_strdup(const char* str);
+
     /**
      * @brief Creates and initializes a new argument parser instance. 
      * @param description Brief program description for help output (can be NULL)
