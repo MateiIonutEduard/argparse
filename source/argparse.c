@@ -524,6 +524,11 @@ ArgParser* argparse_new(const char* description) {
     parser->help_requested = false;
     parser->help_added = true;
 
+    /* initialize hash table fields */
+    parser->hash_table = NULL;
+    parser->argument_count = 0;
+    parser->hash_enabled = false;
+
     /* set the description */
     if (description) {
         parser->description = strdup(description);
