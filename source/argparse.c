@@ -58,27 +58,41 @@ static char* argparse_strdup(const char* str) {
 }
 
 static void ensure_hash_table_built(ArgParser* parser) {
-    if (!parser) return;
+    if (!parser || parser->hash_table) return;
 
-    if (!parser->hash_table && parser->argument_count >= ARGPARSE_HASH_THRESHOLD) {
-        parser->hash_table = argparse_hash_create_internal();
-        if (!parser->hash_table) return;
+    /* only build if threshold reached */
+    if (parser->argument_count < ARGPARSE_HASH_THRESHOLD) return;
 
-        /* build from existing arguments */
-        Argument* current = parser->arguments;
+    parser->hash_table = argparse_hash_create_internal();
+    if (!parser->hash_table) return;
 
-        while (current) {
-            if (current->short_name)
-                argparse_hash_insert_internal(parser->hash_table,
-                    current->short_name, current);
-            if (current->long_name)
-                argparse_hash_insert_internal(parser->hash_table,
-                    current->long_name, current);
-            current = current->next;
-        }
-
-        parser->hash_enabled = true;
+    /* build from all existing arguments */
+    Argument* current = parser->arguments;
+    while (current) {
+        if (current->short_name)
+            argparse_hash_insert_internal(parser->hash_table, current->short_name, current);
+        if (current->long_name)
+            argparse_hash_insert_internal(parser->hash_table, current->long_name, current);
+        current = current->next;
     }
+
+    parser->hash_enabled = true;
+}
+
+static void insert_argument_into_hash_table(ArgParser* parser, Argument* arg) {
+    if (!parser || !arg) return;
+
+    /* insert into existing hash table */
+    if (parser->hash_table) {
+        if (arg->short_name) argparse_hash_insert_internal(parser->hash_table, arg->short_name, arg);
+        if (arg->long_name) argparse_hash_insert_internal(parser->hash_table, arg->long_name, arg);
+    }
+
+    /* check if we need to build hash table now */
+    parser->argument_count++;
+
+    if (!parser->hash_table && parser->argument_count >= ARGPARSE_HASH_THRESHOLD)
+        ensure_hash_table_built(parser);
 }
 
 /* Internal list node structure */
@@ -88,71 +102,28 @@ typedef struct ListNode {
 } ListNode;
 
 static Argument* find_argument(ArgParser* parser, const char* name) {
-    /* early return for invalid cases */
-    if (!parser || !name || name[0] == '\0')
-        return NULL;
-
-    if (parser->hash_enabled && parser->hash_table) {
-        Argument* arg = argparse_hash_lookup_internal(parser->hash_table, name);
-        if (arg) return arg;
-    }
-
-    Argument* arg = parser->arguments;
-
-    while (arg != NULL) {
-        if (arg->short_name != NULL && strcmp(arg->short_name, name) == 0) return arg;
-        if (arg->long_name != NULL && strcmp(arg->long_name, name) == 0) return arg;
-        arg = arg->next;
-    }
-
-    return NULL;
+    /* the hash function handles both cases internally now */
+    return argparse_hash_find_argument(parser, name);
 }
 
 static bool is_argument(ArgParser* parser, const char* str) {
-    /* quick rejection of invalid inputs */
-    if (!parser || !str || str[0] == '\0')
-        return false;
-
-    /* use hash table lookup */
-    if (parser->hash_enabled && parser->hash_table)
-        return argparse_hash_lookup_internal(parser->hash_table, str) != NULL;
-
-    /* single-pass through the argument list */
-    Argument* arg = parser->arguments;
-
-    while (arg != NULL) {
-        /* check short name first */
-        if (arg->short_name != NULL && strcmp(arg->short_name, str) == 0)
-            return true;
-
-        /* then check long name */
-        if (arg->long_name != NULL && strcmp(arg->long_name, str) == 0)
-            return true;
-        
-        arg = arg->next;
-    }
-
-    return false;
+    /* the hash utility handle both cases efficiently */
+    return argparse_hash_is_argument(parser, str);
 }
 
 static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_name) {
-    /* validate inputs */
-    if (!parser || !long_name || long_name[0] == '\0')
-        return NULL;
+    /* use hash lookup first if available */
+    Argument* arg = argparse_hash_find_argument(parser, long_name);
 
-    /* single hash lookup if enabled */
-    if (parser->hash_enabled && parser->hash_table) {
-        Argument* arg = argparse_hash_lookup_internal(parser->hash_table, long_name);
+    /* verify it's actually a long name match */
+    if (arg && arg->long_name && strcmp(arg->long_name, long_name) == 0)
+        return arg;
 
-        if (arg && arg->long_name && strcmp(arg->long_name, long_name) == 0)
-            return arg;
-    }
+    /* if hash missed or wrong match, do targeted search */
+    arg = parser->arguments;
 
-    /* linear search for long names only */
-    Argument* arg = parser->arguments;
-
-    while (arg != NULL) {
-        if (arg->long_name != NULL && strcmp(arg->long_name, long_name) == 0)
+    while (arg) {
+        if (arg->long_name && strcmp(arg->long_name, long_name) == 0)
             return arg;
         arg = arg->next;
     }
@@ -567,7 +538,7 @@ ArgParser* argparse_new(const char* description) {
     parser->help_added = true;
 
     /* initialize hash table fields */
-    parser->hash_table = argparse_hash_create_internal();
+    parser->hash_table = NULL;
     parser->argument_count = 0;
     parser->hash_enabled = false;
 
@@ -684,7 +655,7 @@ void argparse_add_argument(ArgParser* parser, const char* short_name, const char
         return;
     }
 
-    /* don't add duplicate help arguments, but use exact matching */
+    /* don't add duplicate help arguments */
     if (!parser->help_added && ((short_name && is_help_argument(short_name)) ||
         (long_name && is_help_argument(long_name))))
         return;
@@ -709,124 +680,68 @@ void argparse_add_argument(ArgParser* parser, const char* short_name, const char
     }
 
     /* init all fields to known state */
-    arg->short_name = NULL;
-    arg->long_name = NULL;
-    arg->help = NULL;
-    arg->value = NULL;
-    arg->next = NULL;
+    memset(arg, 0, sizeof(Argument));
     arg->required = required;
-    arg->set = false;
     arg->type = type;
     arg->is_list = is_list_type(type);
-    arg->suffix = '\0';     /* No GNU-style by default */
-    arg->delimiter = ' ';   /* Default list delimiter */
+    arg->delimiter = ' ';
 
-    /* duplicate strings */
-    if (short_name) arg->short_name = strdup(short_name);
-    if (long_name) arg->long_name = strdup(long_name);
-    if (help) arg->help = strdup(help);
+    /* duplicate strings with immediate error checking */
+    if (short_name && !(arg->short_name = strdup(short_name))) goto memory_error;
+    if (long_name && !(arg->long_name = strdup(long_name))) goto memory_error;
+    if (help && !(arg->help = strdup(help))) goto memory_error;
 
     /* handle default value allocation */
     if (default_value) {
         switch (type) {
         case ARG_INT:
-            arg->value = (int*)malloc(sizeof(int));
-            if (arg->value) {
-                *(int*)arg->value = *(int*)default_value;
-            }
-            else {
-                APE_SET_MEMORY(arg_name);
-                free_argument(arg);
-                return;
-            }
+            if (!(arg->value = malloc(sizeof(int)))) goto memory_error;
+            *(int*)arg->value = *(int*)default_value;
             break;
 
         case ARG_DOUBLE:
-            arg->value = (double*)malloc(sizeof(double));
-            if (arg->value) {
-                *(double*)arg->value = *(double*)default_value;
-            }
-            else {
-                APE_SET_MEMORY(arg_name);
-                free_argument(arg);
-                return;
-            }
+            if (!(arg->value = malloc(sizeof(double)))) goto memory_error;
+            *(double*)arg->value = *(double*)default_value;
             break;
 
         case ARG_STRING:
             arg->value = strdup((char*)default_value);
-            if (!arg->value && default_value) {
-                APE_SET_MEMORY(arg_name);
-                free_argument(arg);
-                return;
-            }
+            if (!arg->value && default_value) goto memory_error;
             break;
 
         case ARG_BOOL:
-            arg->value = (bool*)malloc(sizeof(bool));
-            if (arg->value) {
-                *(bool*)arg->value = *(bool*)default_value;
-            }
-            else {
-                APE_SET_MEMORY(arg_name);
-                free_argument(arg);
-                return;
-            }
+            if (!(arg->value = malloc(sizeof(bool)))) goto memory_error;
+            *(bool*)arg->value = *(bool*)default_value;
             break;
 
         default:
-            /* for lists or unknown types */
             arg->value = create_default_value(type);
-            if (!arg->value && type != ARG_STRING) {
-                APE_SET_MEMORY(arg_name);
-                free_argument(arg);
-                return;
-            }
+            if (!arg->value && type != ARG_STRING) goto memory_error;
             break;
         }
     }
     else {
         arg->value = create_default_value(type);
-        if (!arg->value && type != ARG_STRING) {
-            APE_SET_MEMORY(arg_name);
-            free_argument(arg);
-            return;
-        }
+        if (!arg->value && type != ARG_STRING) goto memory_error;
     }
 
-    /* check if string allocations failed */
-    if ((short_name && !arg->short_name) ||
-        (long_name && !arg->long_name) ||
-        (help && !arg->help)) {
-        APE_SET_MEMORY(arg_name);
-        free_argument(arg);
-        return;
-    }
-
-    /* insert into hash table if it exists */
-    if (parser->hash_table) {
-        if (arg->short_name) argparse_hash_insert_internal(parser->hash_table, arg->short_name, arg);
-        if (arg->long_name) argparse_hash_insert_internal(parser->hash_table, arg->long_name, arg);
-    }
-
-    parser->argument_count++;
-
-    /* add to linked list; maintain tail pointer for O(1) appends */
-    if (parser->arguments == NULL)
+    /* add to linked list - maintain tail for O(1) append */
+    if (!parser->arguments) {
         parser->arguments = arg;
+    }
     else {
-        /* find tail pointer */
         Argument* tail = parser->arguments;
         while (tail->next) tail = tail->next;
         tail->next = arg;
     }
 
-    /* update argument count and auto-enable hash table at threshold */
-    parser->argument_count++;
+    /* handle hash table integration */
+    insert_argument_into_hash_table(parser, arg);
+    return;
 
-    // Build hash table when threshold reached
-    if (!parser->hash_enabled && parser->argument_count >= ARGPARSE_HASH_THRESHOLD)
-        ensure_hash_table_built(parser);
+memory_error:
+    APE_SET_MEMORY(arg_name);
+    free_argument(arg);
 }
 
 void argparse_add_argument_ex(ArgParser* parser, const char* short_name, const char* long_name,
