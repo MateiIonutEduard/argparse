@@ -83,6 +83,10 @@ static bool is_argument(ArgParser* parser, const char* str) {
     if (!parser || !str || str[0] == '\0')
         return false;
 
+    /* use hash table lookup */
+    if (parser->hash_enabled && parser->hash_table)
+        return argparse_hash_lookup(parser->hash_table, str) != NULL;
+
     /* single-pass through the argument list */
     Argument* arg = parser->arguments;
 
