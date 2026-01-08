@@ -75,7 +75,14 @@ void argparse_hash_destroy_internal(ArgHashTable* table) {
 
 /* Resize hash table when load factor exceeds threshold. */
 static bool hash_table_resize(ArgHashTable* table) {
-    if (!table) return false;
+    /* clear any previous error state */
+    argparse_error_clear();
+
+    if (!table) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Cannot resize NULL hash table.");
+        return false;
+    }
+
     size_t new_capacity = table->capacity * 2;
 
     /* overflow check for safety */
@@ -118,8 +125,14 @@ static bool hash_table_resize(ArgHashTable* table) {
 }
 
 bool argparse_hash_insert_internal(ArgHashTable* table, const char* key, Argument* arg) {
-    if (!table || !key || !arg)
+    /* clear any previous error state */
+    argparse_error_clear();
+
+    if (!table || !key || !arg) {
+        APE_SET(APE_INTERNAL, EINVAL, key ? key : "(null)",
+            "Invalid parameters to hash insertion.");
         return false;
+    }
 
     /* check load factor and resize if needed */
     float load_factor = (float)table->size / (float)table->capacity;
@@ -147,12 +160,15 @@ bool argparse_hash_insert_internal(ArgHashTable* table, const char* key, Argumen
 
     /* create new entry */
     HashEntry* new_entry = (HashEntry*)malloc(sizeof(HashEntry));
-    if (!new_entry) return false;
+    if (!new_entry) {
+        APE_SET_MEMORY(key);
+        return false;
+    }
 
-    /* duplicate the existing key */
+    /* duplicate the key */
     new_entry->key = strdup(key);
-
     if (!new_entry->key) {
+        APE_SET_MEMORY(key);
         free(new_entry);
         return false;
     }
@@ -160,9 +176,9 @@ bool argparse_hash_insert_internal(ArgHashTable* table, const char* key, Argumen
     /* insert at head of bucket */
     new_entry->argument = arg;
     new_entry->next = table->buckets[index];
-
     table->buckets[index] = new_entry;
     table->size++;
+
     return true;
 }
 
