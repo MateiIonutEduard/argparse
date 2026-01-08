@@ -53,7 +53,12 @@ extern "C" {
         bool hash_enabled;
     };
 
-    /* @brief Return a null-terminated duplicate of the string referenced by str. */
+    /** 
+     * @brief Safe strdup() alternative with overflow protection and error reporting.
+     * @param str Source string to duplicate. May be NULL (returns NULL)
+     * @return - Success: Pointer to newly allocated string duplicate (caller-owned)
+     * @return - Failure: NULL with error state set (APE_MEMORY or APE_RANGE)
+     */
     char* argparse_strdup(const char* str);
 
     /**
