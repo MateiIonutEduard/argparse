@@ -1,4 +1,5 @@
 #include "argparse.h"
+#include "argparse_hash.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,7 +69,7 @@ static Argument* find_argument(ArgParser* parser, const char* name) {
         return NULL;
 
     if (parser->hash_enabled && parser->hash_table) {
-        Argument* arg = argparse_hash_lookup(parser->hash_table, name);
+        Argument* arg = argparse_hash_lookup_internal(parser->hash_table, name);
         if (arg) return arg;
     }
 
@@ -90,7 +91,7 @@ static bool is_argument(ArgParser* parser, const char* str) {
 
     /* use hash table lookup */
     if (parser->hash_enabled && parser->hash_table)
-        return argparse_hash_lookup(parser->hash_table, str) != NULL;
+        return argparse_hash_lookup_internal(parser->hash_table, str) != NULL;
 
     /* single-pass through the argument list */
     Argument* arg = parser->arguments;
@@ -116,6 +117,13 @@ static Argument* find_argument_by_long_name(ArgParser* parser, const char* long_
         return NULL;
 
     Argument* arg = parser->arguments;
+
+    if (!is_argument(parser, long_name))
+        return NULL;
+
+    /* use hash table for efficiency */
+    if (parser->hash_enabled && parser->hash_table)
+        return argparse_hash_lookup(parser->hash_table, long_name);
 
     while (arg != NULL) {
         if (arg->long_name != NULL && strcmp(arg->long_name, long_name) == 0)
