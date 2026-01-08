@@ -542,8 +542,8 @@ ArgParser* argparse_new(const char* description) {
     parser->help_added = true;
 
     /* initialize hash table fields */
-    parser->hash_table = NULL;
-    parser->argument_count = 0;
+    parser->hash_table = argparse_hash_create_internal();
+    parser->argument_count = 1;
     parser->hash_enabled = false;
 
     /* set the description */
@@ -1499,6 +1499,9 @@ void argparse_free(ArgParser* parser) {
 
     /* clean up error system for this thread */
     argparse_error_clear();
+
+    if (parser->hash_table) 
+        argparse_hash_destroy_internal(parser->hash_table);
     Argument* current = parser->arguments;
 
     while (current) {
