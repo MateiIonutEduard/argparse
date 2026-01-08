@@ -183,8 +183,14 @@ bool argparse_hash_insert_internal(ArgHashTable* table, const char* key, Argumen
 }
 
 Argument* argparse_hash_lookup_internal(ArgHashTable* table, const char* key) {
-    if (!table || !key) 
+    /* clear previous error, lookup failure is normal */
+    argparse_error_clear();
+
+    if (!table || !key) {
+        APE_SET(APE_INTERNAL, EINVAL, key ? key : "(null)",
+            "Invalid parameters to hash lookup.");
         return NULL;
+    }
 
     /* compute hash and bucket index */
     uint32_t hash = hash_string(key, table->seed);
@@ -203,7 +209,16 @@ Argument* argparse_hash_lookup_internal(ArgHashTable* table, const char* key) {
 }
 
 bool ensure_hash_table_built(ArgParser* parser) {
-    if (!parser || parser->hash_table)
+    /* clear previous error */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL,
+            "Cannot build hash table for NULL parser.");
+        return false;
+    }
+
+    if (parser->hash_table)
         return true;
 
     if (parser->argument_count < ARGPARSE_HASH_THRESHOLD)
@@ -231,7 +246,14 @@ bool ensure_hash_table_built(ArgParser* parser) {
 }
 
 Argument* argparse_hash_find_argument(ArgParser* parser, const char* name) {
-    if (!parser || !name || name[0] == '\0') return NULL;
+    /* clear previous error */
+    argparse_error_clear();
+
+    if (!parser || !name || name[0] == '\0') {
+        APE_SET(APE_INTERNAL, EINVAL, name ? name : "(null)",
+            "Invalid parameters to argument lookup.");
+        return NULL;
+    }
 
     /* use hash table if enabled */
     if (parser->hash_enabled && parser->hash_table)
@@ -247,12 +269,19 @@ Argument* argparse_hash_find_argument(ArgParser* parser, const char* name) {
         arg = arg->next;
     }
 
+    /* not found */
     return NULL;
 }
 
 bool argparse_hash_is_argument(ArgParser* parser, const char* str) {
-    if (!parser || !str || str[0] == '\0') 
+    /* clear previous error */
+    argparse_error_clear();
+
+    if (!parser || !str || str[0] == '\0') {
+        APE_SET(APE_INTERNAL, EINVAL, str ? str : "(null)",
+            "Invalid parameters to argument check.");
         return false;
+    }
 
     /* use hash table if enabled */
     if (parser->hash_enabled && parser->hash_table)
@@ -266,6 +295,7 @@ bool argparse_hash_is_argument(ArgParser* parser, const char* str) {
         if (arg->long_name && strcmp(arg->long_name, str) == 0) return true;
         arg = arg->next;
     }
-
+    
+    /* not an argument */
     return false;
 }
