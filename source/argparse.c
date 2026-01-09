@@ -294,9 +294,13 @@ static bool get_safe_double(const char* str, double* out) {
 
 /* Parse list values using dynamic delimiter using zero allocations for parsing. */
 static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
+    /* save only error category, for future use */
+    ArgParseErrorCategory prev_category = argparse_error_get_category();
+
     /* clear any existing errors */
     argparse_error_clear();
 
+    /* validate inputs */
     if (!arg || !value_str || !arg->is_list) {
         const char* arg_name = arg ? (arg->long_name ? arg->long_name :
             arg->short_name ? arg->short_name :
@@ -305,11 +309,8 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
         return;
     }
 
-    /* get dynamic delimiter per argument */
     const char delimiter = arg->delimiter ? arg->delimiter : ' ';
     const char* start = value_str;
-
-    const char* end;
     int count = 0;
 
     while (*start) {
@@ -318,26 +319,30 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
         if (!*start) break;
 
         /* find token end */
-        end = start;
+        const char* end = start;
         while (*end && *end != delimiter) end++;
 
         const size_t token_len = (size_t)(end - start);
         if (token_len == 0) break;
 
-        /* parse based on type with minimal allocations */
         void* parsed_value = NULL;
         bool valid = false;
 
         switch (arg->type) {
         case ARG_INT_LIST: {
-            /* stack buffer for safe parsing */
             char token_buf[32];
-
             if (token_len >= sizeof(token_buf)) {
                 const char* arg_name = arg->long_name ? arg->long_name :
                     arg->short_name ? arg->short_name :
                     "(unnamed)";
-                APE_SET(APE_RANGE, ERANGE, arg_name, "List value too long for integer parsing.");
+                APE_SET(APE_RANGE, ERANGE, arg_name,
+                    "List value too long for integer parsing.");
+
+                /* restore critical previous error if any */
+                if (prev_category == APE_MEMORY || prev_category == APE_INTERNAL) {
+                    argparse_error_set(prev_category, 0, __func__, __LINE__,
+                        NULL, "Cascading from previous error.");
+                }
                 return;
             }
 
@@ -359,7 +364,13 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
                 const char* arg_name = arg->long_name ? arg->long_name :
                     arg->short_name ? arg->short_name :
                     "(unnamed)";
-                APE_SET(APE_RANGE, ERANGE, arg_name, "List value too long for double parsing.");
+                APE_SET(APE_RANGE, ERANGE, arg_name,
+                    "List value too long for double parsing.");
+
+                if (prev_category == APE_MEMORY || prev_category == APE_INTERNAL) {
+                    argparse_error_set(prev_category, 0, __func__, __LINE__,
+                        NULL, "Cascading from previous error.");
+                }
                 return;
             }
 
@@ -376,16 +387,13 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
             break;
         }
         case ARG_STRING_LIST: {
-            /* strings require allocation anyway */
             char* val = (char*)malloc(token_len + 1);
-
             if (val) {
                 memcpy(val, start, token_len);
                 val[token_len] = '\0';
                 parsed_value = val;
                 valid = true;
             }
-
             break;
         }
         default: {
@@ -394,6 +402,10 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
                 "(unnamed)";
             APE_SET(APE_INTERNAL, EINVAL, arg_name, "Invalid list type.");
 
+            if (prev_category == APE_MEMORY || prev_category == APE_INTERNAL) {
+                argparse_error_set(prev_category, 0, __func__, __LINE__,
+                    NULL, "Cascading from previous error");
+            }
             return;
         }
         }
@@ -406,7 +418,14 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
             const char* arg_name = arg->long_name ? arg->long_name :
                 arg->short_name ? arg->short_name :
                 "(unnamed)";
-            APE_SET(APE_TYPE, EINVAL, arg_name, "Invalid list value.");
+
+            APE_SET(APE_TYPE, EINVAL, arg_name,
+                "Invalid list value.");
+
+            if (prev_category == APE_MEMORY || prev_category == APE_INTERNAL) {
+                argparse_error_set(prev_category, 0, __func__, __LINE__,
+                    NULL, "Cascading from previous error.");
+            }
             return;
         }
 
@@ -417,11 +436,19 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
         const char* arg_name = arg->long_name ? arg->long_name :
             arg->short_name ? arg->short_name :
             "(unnamed)";
-        APE_SET(APE_SYNTAX, EINVAL, arg_name, "List requires values.");
+        APE_SET(APE_SYNTAX, EINVAL, arg_name,
+            "List requires values.");
         return;
     }
 
     arg->set = true;
+
+    /* restore non-fatal previous error */
+    if (prev_category != APE_SUCCESS && prev_category != APE_HELP_REQUESTED) {
+        argparse_error_set(prev_category, 0, __func__, __LINE__,
+            NULL, "Previous error restored "
+            "after successful list parse.");
+    }
 }
 
 /* Helper function to parse multiple values for list arguments. */
