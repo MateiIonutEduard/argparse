@@ -1229,6 +1229,14 @@ int argparse_get_double_list(ArgParser* parser, const char* name, double** value
         return 0;
     }
 
+    size_t alloc_size;
+
+    if (!safe_multiply_size_t((size_t)count, sizeof(double), &alloc_size)) {
+        APE_SET(APE_RANGE, EOVERFLOW, name, "List size overflow.");
+        *values = NULL;
+        return 0;
+    }
+
     /* alloc memory for the array */
     double* array = (double*)malloc((size_t)count * sizeof(double));
 
