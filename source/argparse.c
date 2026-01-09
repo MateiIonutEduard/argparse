@@ -128,23 +128,61 @@ static void* create_default_value(ArgType type) {
 
 static void append_to_list(Argument* arg, void* value) {
     /* validate inputs */
-    if (!arg || !value) return;
-    ListNode** head = (ListNode**)arg->value;
-
-    if (!head) {
-        const char* arg_name = arg->long_name ? arg->long_name :
-            arg->short_name ? arg->short_name :
-            "(unnamed)";
-
-        APE_SET(APE_INTERNAL, EINVAL, arg_name,
-            "List head pointer is NULL.");
+    if (!arg) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL,
+            "append_to_list: Argument pointer is NULL.");
         return;
     }
 
-    ListNode** tail_ptr = head;
+    if (!value) {
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name,
+            "append_to_list: Cannot append NULL value to list.");
+        return;
+    }
 
-    /* find the last next pointer */
-    while (*tail_ptr) tail_ptr = &(*tail_ptr)->next;
+    /* type safety verification */
+    if (!arg->is_list) {
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name,
+            "append_to_list: called on non-list argument.");
+        return;
+    }
+
+    /* storage initialization check */
+    if (!arg->value) {
+        arg->value = malloc(sizeof(ListNode*));
+
+        if (!arg->value) {
+            const char* arg_name = arg->long_name ? arg->long_name :
+                arg->short_name ? arg->short_name :
+                "(unnamed)";
+            APE_SET_MEMORY(arg_name);
+            return;
+        }
+
+        /* initialize to empty list */
+        *(ListNode**)arg->value = NULL;
+    }
+
+    /* type-safe pointer conversion */
+    ListNode** head_ptr = (ListNode**)arg->value;
+
+    /* double-check the cast result */
+    if (!head_ptr) {
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name,
+            "List head pointer is NULL after validation.");
+        return;
+    }
+
+    /* node allocation */
     ListNode* new_node = (ListNode*)malloc(sizeof(ListNode));
 
     if (!new_node) {
@@ -152,16 +190,37 @@ static void append_to_list(Argument* arg, void* value) {
             arg->short_name ? arg->short_name :
             "(unnamed)";
 
+        /* clean up arg->value if we just allocated it */
+        if (arg->value && *(ListNode**)arg->value == NULL) {
+            free(arg->value);
+            arg->value = NULL;
+        }
+
         APE_SET_MEMORY(arg_name);
         return;
     }
 
+    /* node initialization */
     new_node->data = value;
     new_node->next = NULL;
-    *tail_ptr = new_node;
+
+    /* list insertion */
+    if (*head_ptr == NULL)
+        *head_ptr = new_node;
+    else {
+        /* non-empty list - append to tail */
+        ListNode* current = *head_ptr;
+
+        /* O(n) but necessary for append */
+        while (current->next != NULL)
+            current = current->next;
+
+        current->next = new_node;
+    }
 }
 
 static int list_length(ListNode* head) {
+    if (!head) return 0;
     int count = 0;
 
     while (head) {
@@ -235,9 +294,13 @@ static bool get_safe_double(const char* str, double* out) {
 
 /* Parse list values using dynamic delimiter using zero allocations for parsing. */
 static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
+    /* save only error category, for future use */
+    ArgParseErrorCategory prev_category = argparse_error_get_category();
+
     /* clear any existing errors */
     argparse_error_clear();
 
+    /* validate inputs */
     if (!arg || !value_str || !arg->is_list) {
         const char* arg_name = arg ? (arg->long_name ? arg->long_name :
             arg->short_name ? arg->short_name :
@@ -246,11 +309,8 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
         return;
     }
 
-    /* get dynamic delimiter per argument */
     const char delimiter = arg->delimiter ? arg->delimiter : ' ';
     const char* start = value_str;
-
-    const char* end;
     int count = 0;
 
     while (*start) {
@@ -259,26 +319,30 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
         if (!*start) break;
 
         /* find token end */
-        end = start;
+        const char* end = start;
         while (*end && *end != delimiter) end++;
 
         const size_t token_len = (size_t)(end - start);
         if (token_len == 0) break;
 
-        /* parse based on type with minimal allocations */
         void* parsed_value = NULL;
         bool valid = false;
 
         switch (arg->type) {
         case ARG_INT_LIST: {
-            /* stack buffer for safe parsing */
             char token_buf[32];
-
             if (token_len >= sizeof(token_buf)) {
                 const char* arg_name = arg->long_name ? arg->long_name :
                     arg->short_name ? arg->short_name :
                     "(unnamed)";
-                APE_SET(APE_RANGE, ERANGE, arg_name, "List value too long for integer parsing.");
+                APE_SET(APE_RANGE, ERANGE, arg_name,
+                    "List value too long for integer parsing.");
+
+                /* restore critical previous error if any */
+                if (prev_category == APE_MEMORY || prev_category == APE_INTERNAL) {
+                    argparse_error_set(prev_category, 0, __func__, __LINE__,
+                        NULL, "Cascading from previous error.");
+                }
                 return;
             }
 
@@ -300,7 +364,13 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
                 const char* arg_name = arg->long_name ? arg->long_name :
                     arg->short_name ? arg->short_name :
                     "(unnamed)";
-                APE_SET(APE_RANGE, ERANGE, arg_name, "List value too long for double parsing.");
+                APE_SET(APE_RANGE, ERANGE, arg_name,
+                    "List value too long for double parsing.");
+
+                if (prev_category == APE_MEMORY || prev_category == APE_INTERNAL) {
+                    argparse_error_set(prev_category, 0, __func__, __LINE__,
+                        NULL, "Cascading from previous error.");
+                }
                 return;
             }
 
@@ -317,16 +387,13 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
             break;
         }
         case ARG_STRING_LIST: {
-            /* strings require allocation anyway */
             char* val = (char*)malloc(token_len + 1);
-
             if (val) {
                 memcpy(val, start, token_len);
                 val[token_len] = '\0';
                 parsed_value = val;
                 valid = true;
             }
-
             break;
         }
         default: {
@@ -335,6 +402,10 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
                 "(unnamed)";
             APE_SET(APE_INTERNAL, EINVAL, arg_name, "Invalid list type.");
 
+            if (prev_category == APE_MEMORY || prev_category == APE_INTERNAL) {
+                argparse_error_set(prev_category, 0, __func__, __LINE__,
+                    NULL, "Cascading from previous error");
+            }
             return;
         }
         }
@@ -347,7 +418,14 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
             const char* arg_name = arg->long_name ? arg->long_name :
                 arg->short_name ? arg->short_name :
                 "(unnamed)";
-            APE_SET(APE_TYPE, EINVAL, arg_name, "Invalid list value.");
+
+            APE_SET(APE_TYPE, EINVAL, arg_name,
+                "Invalid list value.");
+
+            if (prev_category == APE_MEMORY || prev_category == APE_INTERNAL) {
+                argparse_error_set(prev_category, 0, __func__, __LINE__,
+                    NULL, "Cascading from previous error.");
+            }
             return;
         }
 
@@ -358,11 +436,33 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
         const char* arg_name = arg->long_name ? arg->long_name :
             arg->short_name ? arg->short_name :
             "(unnamed)";
-        APE_SET(APE_SYNTAX, EINVAL, arg_name, "List requires values.");
+        APE_SET(APE_SYNTAX, EINVAL, arg_name,
+            "List requires values.");
         return;
     }
 
     arg->set = true;
+
+    /* restore non-fatal previous error */
+    if (prev_category != APE_SUCCESS && prev_category != APE_HELP_REQUESTED) {
+        argparse_error_set(prev_category, 0, __func__, __LINE__,
+            NULL, "Previous error restored "
+            "after successful list parse.");
+    }
+}
+
+static void cleanup_partial_list(ListNode** head_ptr) {
+    if (!head_ptr || !*head_ptr) return;
+    ListNode* current = *head_ptr;
+
+    while (current) {
+        ListNode* next = current->next;
+        free(current->data);
+        free(current);
+        current = next;
+    }
+
+    *head_ptr = NULL;
 }
 
 /* Helper function to parse multiple values for list arguments. */
@@ -394,9 +494,13 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
                 /* parse as delimited string */
                 parse_list_with_delimiter(arg, value);
 
-                /* check if parse_list_with_delimiter failed */
-                if (argparse_error_occurred())
+                /* clean up partially parsed list if any error occurred */
+                if (argparse_error_occurred()) { 
+                    if (arg->value)
+                        cleanup_partial_list(
+                            (ListNode**)arg->value);
                     return current_index;
+                }
 
                 values_parsed++;
                 i++;
@@ -573,24 +677,21 @@ static bool is_help_argument(const char* arg_name) {
     if (!arg_name || arg_name[0] == '\0')
         return false;
 
-    /* skip any prefix both single and double char prefixes */
-    volatile const char* name_start = arg_name;
+    /* block all format string attacks */
+    if (strchr(arg_name, '%'))
+        return false;
 
-    /* skip prefix characters (allow any non-alphanumeric as prefix) */
-    while (*name_start && !isalnum((unsigned char)*name_start))
-        name_start++;
+    /* pre-computed list of accepted help arguments */
+    static const char* const patterns[] = {
+        "-h", "-H", "--help", "--HELP",
+        "/?", "/help", "/HELP", NULL
+    };
 
-    /* check for single char 'h' for short help argument name */
-    if (name_start[0] == 'h' && name_start[1] == '\0')
-        return true;
-
-    /* check for long "help", optimized for performance */
-    if (name_start[0] == 'h' &&
-        name_start[1] == 'e' &&
-        name_start[2] == 'l' &&
-        name_start[3] == 'p' &&
-        name_start[4] == '\0')
-        return true;
+    /* linear scan through accepted forms, O(1) in practice */
+    for (const char* const* ptr = patterns; *ptr; ptr++) {
+        if (strcmp(arg_name, *ptr) == 0)
+            return true;
+    }
 
     return false;
 }
@@ -606,7 +707,7 @@ void argparse_add_argument(ArgParser* parser, const char* short_name, const char
     }
 
     /* don't add duplicate help arguments */
-    if (!parser->help_added && ((short_name && is_help_argument(short_name)) ||
+    if (parser->help_added && ((short_name && is_help_argument(short_name)) ||
         (long_name && is_help_argument(long_name))))
         return;
 
@@ -942,19 +1043,50 @@ static void parse_single_value(Argument* arg, const char* str_val) {
 
     case ARG_BOOL:
         if (arg->value) {
-            /* parse boolean from string value */
-            if (strcmp(str_val, "true") == 0 ||
-                strcmp(str_val, "1") == 0 ||
-                strcmp(str_val, "") == 0)
+            /* handle flag-style boolean */
+            if (str_val[0] == '\0')
                 *(bool*)arg->value = true;
-            else if (strcmp(str_val, "false") == 0 ||
-                strcmp(str_val, "0") == 0) {
-                *(bool*)arg->value = false;
-            }
             else {
-                APE_SET(APE_TYPE, EINVAL, arg_name,
-                    "Invalid boolean value (use true/false or 1/0).");
-                return;
+                /* convert to lowercase */
+                char lower_val[64];
+                size_t i = 0;
+
+                for (; str_val[i] && i < sizeof(lower_val) - 1; i++)
+                    lower_val[i] = (char)tolower((unsigned char)str_val[i]);
+                
+                lower_val[i] = '\0';
+
+                /* check for overflow */
+                if (str_val[i] != '\0') {
+                    APE_SET(APE_RANGE, ERANGE, arg_name,
+                        "Boolean value too long.");
+                    return;
+                }
+
+                /* explicit true values (case-insensitive) */
+                if (strcmp(lower_val, "true") == 0 ||
+                    strcmp(lower_val, "1") == 0 ||
+                    strcmp(lower_val, "yes") == 0 ||
+                    strcmp(lower_val, "on") == 0 ||
+                    strcmp(lower_val, "enable") == 0 ||
+                    strcmp(lower_val, "enabled") == 0) {
+                    *(bool*)arg->value = true;
+                }
+                /* explicit false values (case-insensitive) */
+                else if (strcmp(lower_val, "false") == 0 ||
+                    strcmp(lower_val, "0") == 0 ||
+                    strcmp(lower_val, "no") == 0 ||
+                    strcmp(lower_val, "off") == 0 ||
+                    strcmp(lower_val, "disable") == 0 ||
+                    strcmp(lower_val, "disabled") == 0) {
+                    *(bool*)arg->value = false;
+                }
+                else {
+                    APE_SET(APE_TYPE, EINVAL, arg_name,
+                        "Invalid boolean value. Use: true/false, "
+                        "yes/no, 1/0, on/off, enable/disable");
+                    return;
+                }
             }
         }
         else {
@@ -962,10 +1094,11 @@ static void parse_single_value(Argument* arg, const char* str_val) {
                 "Argument value pointer is NULL.");
             return;
         }
+
         break;
 
     default:
-        /* Unknown argument type */
+        /* unknown argument type */
         APE_SET(APE_INTERNAL, EINVAL, arg_name,
             "Unknown argument type.");
         return;
@@ -1099,31 +1232,66 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
 }
 
 bool argparse_get_bool(ArgParser* parser, const char* name) {
-    if (parser == NULL) return false;
+    /* clear any existing errors */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return false;
+    }
+
     Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? *(bool*)arg->value : false;
 }
 
 int argparse_get_int(ArgParser* parser, const char* name) {
-    if (parser == NULL) return 0;
+    /* clear any existing errors */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return 0;
+    }
+
     Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? *(int*)arg->value : 0;
 }
 
 double argparse_get_double(ArgParser* parser, const char* name) {
-    if (parser == NULL) return 0.0;
+    /* clear any existing errors */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return 0.0;
+    }
+
     Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? *(double*)arg->value : 0.0;
 }
 
 const char* argparse_get_string(ArgParser* parser, const char* name) {
-    if (parser == NULL) return NULL;
+    /* clear any existing errors */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return NULL;
+    }
+
     Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? (const char*)arg->value : NULL;
 }
 
 int argparse_get_list_count(ArgParser* parser, const char* name) {
-    if (parser == NULL) return 0;
+    /* clear any existing errors */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return 0;
+    }
+
     Argument* arg = argparse_hash_find_argument(parser, name);
     if (!arg || !arg->set) return 0;
 
@@ -1136,8 +1304,21 @@ int argparse_get_int_list(ArgParser* parser, const char* name, int** values) {
     argparse_error_clear();
 
     /* check inputs first */
-    if (!parser || !name || !values)
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
         return 0;
+    }
+
+    if (!name || name[0] == '\0') {
+        APE_SET(APE_INTERNAL, EINVAL, NULL,
+            "Argument name are empty or NULL.");
+        return 0;
+    }
+
+    if (!values) {
+        APE_SET_MEMORY(name);
+        return 0;
+    }
 
     /* find the argument */
     Argument* arg = argparse_hash_find_argument(parser, name);
@@ -1157,6 +1338,14 @@ int argparse_get_int_list(ArgParser* parser, const char* name, int** values) {
     int count = list_length(head);
 
     if (count == 0) {
+        *values = NULL;
+        return 0;
+    }
+
+    size_t alloc_size;
+
+    if (!safe_multiply_size_t((size_t)count, sizeof(int), &alloc_size)) {
+        APE_SET(APE_RANGE, EOVERFLOW, name, "List size overflow.");
         *values = NULL;
         return 0;
     }
@@ -1191,9 +1380,22 @@ int argparse_get_double_list(ArgParser* parser, const char* name, double** value
     /* clear any existing errors */
     argparse_error_clear();
 
-    /* validate inputs */
-    if (!parser || !name || !values)
+    /* check inputs first */
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
         return 0;
+    }
+
+    if (!name || name[0] == '\0') {
+        APE_SET(APE_INTERNAL, EINVAL, NULL,
+            "Argument name are empty or NULL.");
+        return 0;
+    }
+
+    if (!values) {
+        APE_SET_MEMORY(name);
+        return 0;
+    }
 
     /* find the argument */
     Argument* arg = argparse_hash_find_argument(parser, name);
@@ -1206,6 +1408,14 @@ int argparse_get_double_list(ArgParser* parser, const char* name, double** value
     int count = list_length(head);
 
     if (count == 0) {
+        *values = NULL;
+        return 0;
+    }
+
+    size_t alloc_size;
+
+    if (!safe_multiply_size_t((size_t)count, sizeof(double), &alloc_size)) {
+        APE_SET(APE_RANGE, EOVERFLOW, name, "List size overflow.");
         *values = NULL;
         return 0;
     }
@@ -1237,9 +1447,22 @@ int argparse_get_string_list(ArgParser* parser, const char* name, char*** values
     /* clear any existing errors */
     argparse_error_clear();
 
-    /* validate input params */
-    if (!parser || !name || !values)
+    /* check inputs first */
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
         return 0;
+    }
+
+    if (!name || name[0] == '\0') {
+        APE_SET(APE_INTERNAL, EINVAL, NULL,
+            "Argument name are empty or NULL.");
+        return 0;
+    }
+
+    if (!values) {
+        APE_SET_MEMORY(name);
+        return 0;
+    }
 
     /* find the argument */
     Argument* arg = argparse_hash_find_argument(parser, name);
@@ -1252,6 +1475,14 @@ int argparse_get_string_list(ArgParser* parser, const char* name, char*** values
     int count = list_length(head);
 
     if (count == 0) {
+        *values = NULL;
+        return 0;
+    }
+
+    size_t alloc_size;
+
+    if (!safe_multiply_size_t((size_t)count, sizeof(char*), &alloc_size)) {
+        APE_SET(APE_RANGE, EOVERFLOW, name, "List size overflow.");
         *values = NULL;
         return 0;
     }
@@ -1322,15 +1553,23 @@ void argparse_free_string_list(char*** values, int count) {
 }
 
 void argparse_print_help(ArgParser* parser) {
-    if (!parser)
+    /* clean up error system */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
         return;
+    }
 
     /* print usage header */
-    printf("Usage: %s [OPTIONS]\n\n", parser->program_name ? parser->program_name : "");
+    fputs("Usage: ", stdout);
+    fputs(parser->program_name ? parser->program_name : "", stdout);
+    fputs(" [OPTIONS]\n\n", stdout);
 
     /* print description if available */
     if (parser->description && parser->description[0] != '\0') {
-        printf("%s\n\n", parser->description);
+        fputs(parser->description, stdout);
+        fputs("\n\n", stdout);
     }
 
     /* iterate through arguments */

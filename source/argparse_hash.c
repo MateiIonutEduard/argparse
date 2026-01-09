@@ -3,6 +3,119 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <process.h>
+#define getpid _getpid
+#else
+#include <sys/time.h>
+#include <unistd.h>
+#ifdef __APPLE__
+#include <mach/mach_time.h>
+#endif
+#endif
+
+/* Return secure random seed, using portable generator. */
+static uint32_t secure_random_seed(ArgHashTable* table) {
+    uint32_t seed = 0;
+
+    /* try OS-specific secure random */
+#ifdef _WIN32
+    /* Windows CryptGenRandom */
+    HCRYPTPROV hCryptProv = 0;
+    if (CryptAcquireContextW(&hCryptProv, NULL, NULL,
+        PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
+        if (CryptGenRandom(hCryptProv, sizeof(seed), (BYTE*)&seed)) {
+            CryptReleaseContext(hCryptProv, 0);
+            if (seed != 0) return seed;
+        }
+        CryptReleaseContext(hCryptProv, 0);
+    }
+#else
+    /* Unix /dev/urandom */
+    FILE* urandom = fopen("/dev/urandom", "rb");
+    if (urandom) {
+        if (fread(&seed, sizeof(seed), 1, urandom) == 1) {
+            fclose(urandom);
+            return seed;
+        }
+        fclose(urandom);
+    }
+#endif
+
+    /* high-resolution timer combination */
+    uint64_t highres_time = 0;
+
+#ifdef _WIN32
+    LARGE_INTEGER counter;
+    if (QueryPerformanceCounter(&counter)) {
+        highres_time = counter.QuadPart;
+    }
+    else {
+        highres_time = GetTickCount64();
+    }
+#elif defined(__APPLE__)
+    highres_time = mach_absolute_time();
+#else
+    /* POSIX clock_gettime, fallback to gettimeofday */
+#ifdef CLOCK_MONOTONIC
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+        highres_time = (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+    }
+    else {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        highres_time = (uint64_t)tv.tv_sec * 1000000ULL + tv.tv_usec;
+    }
+#else
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    highres_time = (uint64_t)tv.tv_sec * 1000000ULL + tv.tv_usec;
+#endif
+#endif
+
+    /* mix multiple entropy sources */
+    uintptr_t ptr_value = (uintptr_t)table;
+
+    /* get process ID */
+    int process_id =
+#ifdef _WIN32
+    (int)_getpid();
+#else
+        (int)getpid();
+#endif
+
+    /* get thread ID for additional entropy */
+    uintptr_t thread_id = 0;
+
+#ifdef _WIN32
+    thread_id = (uintptr_t)GetCurrentThreadId();
+#elif defined(__linux__)
+    thread_id = (uintptr_t)syscall(SYS_gettid);
+#elif defined(__APPLE__)
+    thread_id = (uintptr_t)pthread_mach_thread_np(pthread_self());
+#endif
+
+    /* high-quality mixing */
+    seed = (uint32_t)highres_time;
+    seed ^= (uint32_t)(highres_time >> 32);
+    seed ^= (uint32_t)ptr_value;
+    seed ^= (uint32_t)(ptr_value >> 32);
+    seed ^= (uint32_t)process_id;
+    seed ^= (uint32_t)thread_id;
+
+    /* MurmurHash3 finalizer for good avalanche */
+    seed ^= seed >> 16;
+    seed *= 0x85ebca6bU;
+    seed ^= seed >> 13;
+    seed *= 0xc2b2ae35U;
+    seed ^= seed >> 16;
+
+    /* ensure non-zero seed */
+    return seed ? seed : 0xDEADBEEFU;
+}
+
 /* Security-enhanced FNV-1a hash with randomization. */
 static uint32_t hash_string(const char* str, uint32_t seed) {
     if (!str) return 0;
@@ -48,9 +161,9 @@ ArgHashTable* argparse_hash_create_internal(void) {
         return NULL;
     }
 
-    /* Generate random seed for hash randomization */
-    table->seed = (uint32_t)time(NULL) ^ ((uint32_t)(uintptr_t)table >> 12);
-
+    /* Generate secure random seed */
+    table->seed = secure_random_seed(table);
+    table->size = 0;
     return table;
 }
 
