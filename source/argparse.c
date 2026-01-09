@@ -990,19 +990,51 @@ static void parse_single_value(Argument* arg, const char* str_val) {
 
     case ARG_BOOL:
         if (arg->value) {
-            /* parse boolean from string value */
-            if (strcmp(str_val, "true") == 0 ||
-                strcmp(str_val, "1") == 0 ||
-                strcmp(str_val, "") == 0)
+            /* handle flag-style boolean */
+            if (str_val[0] == '\0')
                 *(bool*)arg->value = true;
-            else if (strcmp(str_val, "false") == 0 ||
-                strcmp(str_val, "0") == 0) {
-                *(bool*)arg->value = false;
-            }
             else {
-                APE_SET(APE_TYPE, EINVAL, arg_name,
-                    "Invalid boolean value (use true/false or 1/0).");
-                return;
+                /* convert to lowercase */
+                char lower_val[64];
+                size_t i = 0;
+
+                for (; str_val[i] && i < sizeof(lower_val) - 1; i++)
+                    lower_val[i] = (char)tolower((unsigned char)str_val[i]);
+                
+                lower_val[i] = '\0';
+                printf("-verbose: %s\n", lower_val);
+
+                /* check for overflow */
+                if (str_val[i] != '\0') {
+                    APE_SET(APE_RANGE, ERANGE, arg_name,
+                        "Boolean value too long.");
+                    return;
+                }
+
+                /* explicit true values (case-insensitive) */
+                if (strcmp(lower_val, "true") == 0 ||
+                    strcmp(lower_val, "1") == 0 ||
+                    strcmp(lower_val, "yes") == 0 ||
+                    strcmp(lower_val, "on") == 0 ||
+                    strcmp(lower_val, "enable") == 0 ||
+                    strcmp(lower_val, "enabled") == 0) {
+                    *(bool*)arg->value = true;
+                }
+                /* explicit false values (case-insensitive) */
+                else if (strcmp(lower_val, "false") == 0 ||
+                    strcmp(lower_val, "0") == 0 ||
+                    strcmp(lower_val, "no") == 0 ||
+                    strcmp(lower_val, "off") == 0 ||
+                    strcmp(lower_val, "disable") == 0 ||
+                    strcmp(lower_val, "disabled") == 0) {
+                    *(bool*)arg->value = false;
+                }
+                else {
+                    APE_SET(APE_TYPE, EINVAL, arg_name,
+                        "Invalid boolean value. Use: true/false, "
+                        "yes/no, 1/0, on/off, enable/disable");
+                    return;
+                }
             }
         }
         else {
@@ -1010,10 +1042,11 @@ static void parse_single_value(Argument* arg, const char* str_val) {
                 "Argument value pointer is NULL.");
             return;
         }
+
         break;
 
     default:
-        /* Unknown argument type */
+        /* unknown argument type */
         APE_SET(APE_INTERNAL, EINVAL, arg_name,
             "Unknown argument type.");
         return;
