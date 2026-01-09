@@ -632,15 +632,23 @@ static bool is_help_argument(const char* arg_name) {
     if (!arg_name || arg_name[0] == '\0')
         return false;
 
-    /* block all format string attacks by rejecting any '%' characters */
+    /* block all format string attacks */
     if (strchr(arg_name, '%'))
         return false;
 
-    /* exact matches only: simple, fast, secure */
-    return (strcmp(arg_name, "-h") == 0) ||
-        (strcmp(arg_name, "--help") == 0) ||
-        (strcmp(arg_name, "/?") == 0) ||
-        (strcmp(arg_name, "/help") == 0);
+    /* pre-computed list of accepted help arguments */
+    static const char* const patterns[] = {
+        "-h", "-H", "--help", "--HELP",
+        "/?", "/help", "/HELP", NULL
+    };
+
+    /* linear scan through accepted forms, O(1) in practice */
+    for (const char* const* ptr = patterns; *ptr; ptr++) {
+        if (strcmp(arg_name, *ptr) == 0)
+            return true;
+    }
+
+    return false;
 }
 
 void argparse_add_argument(ArgParser* parser, const char* short_name, const char* long_name,
