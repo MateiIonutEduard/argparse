@@ -573,37 +573,15 @@ static bool is_help_argument(const char* arg_name) {
     if (!arg_name || arg_name[0] == '\0')
         return false;
 
-    /* reject arguments with dangerous format string chars */
-    const char* unsafe = "%n";
-
-    for (const char* p = unsafe; *p; p++) {
-        if (strchr(arg_name, *p))
-            return false;
-    }
-
-    /* skip any leading dashes or slashes */
-    const char* name_start = arg_name;
-
-    while (*name_start && (*name_start == '-' || *name_start == '/'))
-        name_start++;
-
-    /* handle empty after stripping */
-    if (*name_start == '\0')
+    /* block all format string attacks by rejecting any '%' characters */
+    if (strchr(arg_name, '%'))
         return false;
 
-    /* convert to lowercase for case-insensitive comparison */
-    char normalized[32];
-    size_t i = 0;
-
-    for (; name_start[i] && i < sizeof(normalized) - 1; i++)
-        normalized[i] = (char)tolower((unsigned char)name_start[i]);
-    
-    normalized[i] = '\0';
-
-    /* accept all standard forms */
-    return (strcmp(normalized, "h") == 0) ||
-        (strcmp(normalized, "?") == 0) ||
-        (strcmp(normalized, "help") == 0);
+    /* exact matches only: simple, fast, secure */
+    return (strcmp(arg_name, "-h") == 0) ||
+        (strcmp(arg_name, "--help") == 0) ||
+        (strcmp(arg_name, "/?") == 0) ||
+        (strcmp(arg_name, "/help") == 0);
 }
 
 void argparse_add_argument(ArgParser* parser, const char* short_name, const char* long_name,
