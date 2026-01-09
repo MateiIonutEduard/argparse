@@ -1134,7 +1134,11 @@ const char* argparse_get_string(ArgParser* parser, const char* name) {
 }
 
 int argparse_get_list_count(ArgParser* parser, const char* name) {
-    if (parser == NULL) return 0;
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return 0;
+    }
+
     Argument* arg = argparse_hash_find_argument(parser, name);
     if (!arg || !arg->set) return 0;
 
@@ -1147,8 +1151,21 @@ int argparse_get_int_list(ArgParser* parser, const char* name, int** values) {
     argparse_error_clear();
 
     /* check inputs first */
-    if (!parser || !name || !values)
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
         return 0;
+    }
+
+    if (!name || name[0] == '\0') {
+        APE_SET(APE_INTERNAL, EINVAL, NULL,
+            "Argument name are empty or NULL.");
+        return 0;
+    }
+
+    if (!values) {
+        APE_SET_MEMORY(values);
+        return 0;
+    }
 
     /* find the argument */
     Argument* arg = argparse_hash_find_argument(parser, name);
@@ -1210,9 +1227,22 @@ int argparse_get_double_list(ArgParser* parser, const char* name, double** value
     /* clear any existing errors */
     argparse_error_clear();
 
-    /* validate inputs */
-    if (!parser || !name || !values)
+    /* check inputs first */
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
         return 0;
+    }
+
+    if (!name || name[0] == '\0') {
+        APE_SET(APE_INTERNAL, EINVAL, NULL,
+            "Argument name are empty or NULL.");
+        return 0;
+    }
+
+    if (!values) {
+        APE_SET_MEMORY(values);
+        return 0;
+    }
 
     /* find the argument */
     Argument* arg = argparse_hash_find_argument(parser, name);
@@ -1264,9 +1294,22 @@ int argparse_get_string_list(ArgParser* parser, const char* name, char*** values
     /* clear any existing errors */
     argparse_error_clear();
 
-    /* validate input params */
-    if (!parser || !name || !values)
+    /* check inputs first */
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
         return 0;
+    }
+
+    if (!name || name[0] == '\0') {
+        APE_SET(APE_INTERNAL, EINVAL, NULL,
+            "Argument name are empty or NULL.");
+        return 0;
+    }
+
+    if (!values) {
+        APE_SET_MEMORY(values);
+        return 0;
+    }
 
     /* find the argument */
     Argument* arg = argparse_hash_find_argument(parser, name);
