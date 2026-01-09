@@ -573,34 +573,37 @@ static bool is_help_argument(const char* arg_name) {
     if (!arg_name || arg_name[0] == '\0')
         return false;
 
+    /* reject arguments with dangerous format string chars */
     const char* unsafe = "%n";
 
-    /* reject potentially malicious input */
     for (const char* p = unsafe; *p; p++) {
         if (strchr(arg_name, *p))
             return false;
     }
 
-    /* skip any prefix both single and double char prefixes */
+    /* skip any leading dashes or slashes */
     const char* name_start = arg_name;
 
-    /* skip prefix characters (allow any non-alphanumeric as prefix) */
-    while (*name_start && !isalnum((unsigned char)*name_start))
+    while (*name_start && (*name_start == '-' || *name_start == '/'))
         name_start++;
 
-    /* check for single char 'h' for short help argument name */
-    if (name_start[0] == 'h' && name_start[1] == '\0')
-        return true;
+    /* handle empty after stripping */
+    if (*name_start == '\0')
+        return false;
 
-    /* check for long "help", optimized for performance */
-    if (name_start[0] == 'h' &&
-        name_start[1] == 'e' &&
-        name_start[2] == 'l' &&
-        name_start[3] == 'p' &&
-        name_start[4] == '\0')
-        return true;
+    /* convert to lowercase for case-insensitive comparison */
+    char normalized[32];
+    size_t i = 0;
 
-    return false;
+    for (; name_start[i] && i < sizeof(normalized) - 1; i++)
+        normalized[i] = (char)tolower((unsigned char)name_start[i]);
+    
+    normalized[i] = '\0';
+
+    /* accept all standard forms */
+    return (strcmp(normalized, "h") == 0) ||
+        (strcmp(normalized, "?") == 0) ||
+        (strcmp(normalized, "help") == 0);
 }
 
 void argparse_add_argument(ArgParser* parser, const char* short_name, const char* long_name,
