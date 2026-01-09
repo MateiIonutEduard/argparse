@@ -573,6 +573,14 @@ static bool is_help_argument(const char* arg_name) {
     if (!arg_name || arg_name[0] == '\0')
         return false;
 
+    const char* unsafe = "%n";
+
+    /* reject potentially malicious input */
+    for (const char* p = unsafe; *p; p++) {
+        if (strchr(arg_name, *p))
+            return false;
+    }
+
     /* skip any prefix both single and double char prefixes */
     const char* name_start = arg_name;
 
