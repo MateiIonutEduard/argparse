@@ -574,7 +574,7 @@ static bool is_help_argument(const char* arg_name) {
         return false;
 
     /* skip any prefix both single and double char prefixes */
-    volatile const char* name_start = arg_name;
+    const char* name_start = arg_name;
 
     /* skip prefix characters (allow any non-alphanumeric as prefix) */
     while (*name_start && !isalnum((unsigned char)*name_start))
@@ -1322,15 +1322,23 @@ void argparse_free_string_list(char*** values, int count) {
 }
 
 void argparse_print_help(ArgParser* parser) {
-    if (!parser)
+    /* clean up error system */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET_MEMORY(NULL);
         return;
+    }
 
     /* print usage header */
-    printf("Usage: %s [OPTIONS]\n\n", parser->program_name ? parser->program_name : "");
+    fputs("Usage: ", stdout);
+    fputs(parser->program_name ? parser->program_name : "", stdout);
+    fputs(" [OPTIONS]\n\n", stdout);
 
     /* print description if available */
     if (parser->description && parser->description[0] != '\0') {
-        printf("%s\n\n", parser->description);
+        fputs(parser->description, stdout);
+        fputs("\n\n", stdout);
     }
 
     /* iterate through arguments */
