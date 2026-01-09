@@ -1482,7 +1482,7 @@ void argparse_print_help(ArgParser* parser) {
     argparse_error_clear();
 
     if (!parser) {
-        APE_SET_MEMORY(NULL);
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
         return;
     }
 
