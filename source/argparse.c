@@ -128,23 +128,61 @@ static void* create_default_value(ArgType type) {
 
 static void append_to_list(Argument* arg, void* value) {
     /* validate inputs */
-    if (!arg || !value) return;
-    ListNode** head = (ListNode**)arg->value;
-
-    if (!head) {
-        const char* arg_name = arg->long_name ? arg->long_name :
-            arg->short_name ? arg->short_name :
-            "(unnamed)";
-
-        APE_SET(APE_INTERNAL, EINVAL, arg_name,
-            "List head pointer is NULL.");
+    if (!arg) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL,
+            "append_to_list: Argument pointer is NULL.");
         return;
     }
 
-    ListNode** tail_ptr = head;
+    if (!value) {
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name,
+            "append_to_list: Cannot append NULL value to list.");
+        return;
+    }
 
-    /* find the last next pointer */
-    while (*tail_ptr) tail_ptr = &(*tail_ptr)->next;
+    /* type safety verification */
+    if (!arg->is_list) {
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name,
+            "append_to_list: called on non-list argument.");
+        return;
+    }
+
+    /* storage initialization check */
+    if (!arg->value) {
+        arg->value = malloc(sizeof(ListNode*));
+
+        if (!arg->value) {
+            const char* arg_name = arg->long_name ? arg->long_name :
+                arg->short_name ? arg->short_name :
+                "(unnamed)";
+            APE_SET_MEMORY(arg_name);
+            return;
+        }
+
+        /* initialize to empty list */
+        *(ListNode**)arg->value = NULL;
+    }
+
+    /* type-safe pointer conversion */
+    ListNode** head_ptr = (ListNode**)arg->value;
+
+    /* double-check the cast result */
+    if (!head_ptr) {
+        const char* arg_name = arg->long_name ? arg->long_name :
+            arg->short_name ? arg->short_name :
+            "(unnamed)";
+        APE_SET(APE_INTERNAL, EINVAL, arg_name,
+            "List head pointer is NULL after validation.");
+        return;
+    }
+
+    /* node allocation */
     ListNode* new_node = (ListNode*)malloc(sizeof(ListNode));
 
     if (!new_node) {
@@ -152,16 +190,37 @@ static void append_to_list(Argument* arg, void* value) {
             arg->short_name ? arg->short_name :
             "(unnamed)";
 
+        /* clean up arg->value if we just allocated it */
+        if (arg->value && *(ListNode**)arg->value == NULL) {
+            free(arg->value);
+            arg->value = NULL;
+        }
+
         APE_SET_MEMORY(arg_name);
         return;
     }
 
+    /* node initialization */
     new_node->data = value;
     new_node->next = NULL;
-    *tail_ptr = new_node;
+
+    /* list insertion */
+    if (*head_ptr == NULL)
+        *head_ptr = new_node;
+    else {
+        /* non-empty list - append to tail */
+        ListNode* current = *head_ptr;
+
+        /* O(n) but necessary for append */
+        while (current->next != NULL)
+            current = current->next;
+
+        current->next = new_node;
+    }
 }
 
 static int list_length(ListNode* head) {
+    if (!head) return 0;
     int count = 0;
 
     while (head) {
