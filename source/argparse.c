@@ -451,6 +451,20 @@ static void parse_list_with_delimiter(Argument* arg, const char* value_str) {
     }
 }
 
+static void cleanup_partial_list(ListNode** head_ptr) {
+    if (!head_ptr || !*head_ptr) return;
+    ListNode* current = *head_ptr;
+
+    while (current) {
+        ListNode* next = current->next;
+        free(current->data);
+        free(current);
+        current = next;
+    }
+
+    *head_ptr = NULL;
+}
+
 /* Helper function to parse multiple values for list arguments. */
 static int parse_list_values(ArgParser* parser, Argument* arg,
     int current_index, int argc, char** argv) {
@@ -480,9 +494,13 @@ static int parse_list_values(ArgParser* parser, Argument* arg,
                 /* parse as delimited string */
                 parse_list_with_delimiter(arg, value);
 
-                /* check if parse_list_with_delimiter failed */
-                if (argparse_error_occurred())
+                /* clean up partially parsed list if any error occurred */
+                if (argparse_error_occurred()) { 
+                    if (arg->value)
+                        cleanup_partial_list(
+                            (ListNode**)arg->value);
                     return current_index;
+                }
 
                 values_parsed++;
                 i++;
