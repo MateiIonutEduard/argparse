@@ -1283,6 +1283,14 @@ int argparse_get_string_list(ArgParser* parser, const char* name, char*** values
         return 0;
     }
 
+    size_t alloc_size;
+
+    if (!safe_multiply_size_t((size_t)count, sizeof(char*), &alloc_size)) {
+        APE_SET(APE_RANGE, EOVERFLOW, name, "List size overflow.");
+        *values = NULL;
+        return 0;
+    }
+
     /* alloc array for string pointers */
     char** string_array = (char**)malloc((size_t)count * sizeof(char*));
 
