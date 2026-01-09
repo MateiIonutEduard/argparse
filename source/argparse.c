@@ -689,7 +689,7 @@ void argparse_add_argument(ArgParser* parser, const char* short_name, const char
     }
 
     /* don't add duplicate help arguments */
-    if (!parser->help_added && ((short_name && is_help_argument(short_name)) ||
+    if (parser->help_added && ((short_name && is_help_argument(short_name)) ||
         (long_name && is_help_argument(long_name))))
         return;
 
@@ -1037,7 +1037,6 @@ static void parse_single_value(Argument* arg, const char* str_val) {
                     lower_val[i] = (char)tolower((unsigned char)str_val[i]);
                 
                 lower_val[i] = '\0';
-                printf("-verbose: %s\n", lower_val);
 
                 /* check for overflow */
                 if (str_val[i] != '\0') {
@@ -1215,30 +1214,61 @@ void argparse_parse(ArgParser* parser, int argc, char** argv) {
 }
 
 bool argparse_get_bool(ArgParser* parser, const char* name) {
-    if (parser == NULL) return false;
+    /* clear any existing errors */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return false;
+    }
+
     Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? *(bool*)arg->value : false;
 }
 
 int argparse_get_int(ArgParser* parser, const char* name) {
-    if (parser == NULL) return 0;
+    /* clear any existing errors */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return 0;
+    }
+
     Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? *(int*)arg->value : 0;
 }
 
 double argparse_get_double(ArgParser* parser, const char* name) {
-    if (parser == NULL) return 0.0;
+    /* clear any existing errors */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return 0.0;
+    }
+
     Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? *(double*)arg->value : 0.0;
 }
 
 const char* argparse_get_string(ArgParser* parser, const char* name) {
-    if (parser == NULL) return NULL;
+    /* clear any existing errors */
+    argparse_error_clear();
+
+    if (!parser) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
+        return NULL;
+    }
+
     Argument* arg = argparse_hash_find_argument(parser, name);
     return arg && arg->set ? (const char*)arg->value : NULL;
 }
 
 int argparse_get_list_count(ArgParser* parser, const char* name) {
+    /* clear any existing errors */
+    argparse_error_clear();
+
     if (!parser) {
         APE_SET(APE_INTERNAL, EINVAL, NULL, "Parser is NULL.");
         return 0;
@@ -1268,7 +1298,7 @@ int argparse_get_int_list(ArgParser* parser, const char* name, int** values) {
     }
 
     if (!values) {
-        APE_SET_MEMORY(values);
+        APE_SET_MEMORY(name);
         return 0;
     }
 
@@ -1345,7 +1375,7 @@ int argparse_get_double_list(ArgParser* parser, const char* name, double** value
     }
 
     if (!values) {
-        APE_SET_MEMORY(values);
+        APE_SET_MEMORY(name);
         return 0;
     }
 
@@ -1412,7 +1442,7 @@ int argparse_get_string_list(ArgParser* parser, const char* name, char*** values
     }
 
     if (!values) {
-        APE_SET_MEMORY(values);
+        APE_SET_MEMORY(name);
         return 0;
     }
 
