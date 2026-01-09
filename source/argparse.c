@@ -1172,6 +1172,14 @@ int argparse_get_int_list(ArgParser* parser, const char* name, int** values) {
         return 0;
     }
 
+    size_t alloc_size;
+
+    if (!safe_multiply_size_t((size_t)count, sizeof(int), &alloc_size)) {
+        APE_SET(APE_RANGE, EOVERFLOW, name, "List size overflow.");
+        *values = NULL;
+        return 0;
+    }
+
     /* alloc memory for the array with overflow protection */
     int* array = (int*)malloc((size_t)count * sizeof(int));
 
