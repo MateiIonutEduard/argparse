@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
             return EXIT_SUCCESS;
         }
         else {
-            /* Actual error occurred */
+            /* actual error occurred */
             fprintf(stderr, "Parse error: %s (errno=%d).\n", err_msg, err);
             argparse_free(parser);
             return EXIT_FAILURE;
