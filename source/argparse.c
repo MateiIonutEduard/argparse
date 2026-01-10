@@ -821,23 +821,6 @@ void argparse_add_argument_ex(ArgParser* parser, const char* short_name, const c
         last->suffix = suffix;
 }
 
-/* Skip dynamic prefixes for a specific argument.  */
-static inline const char* skip_dynamic_prefix(const char* str) {
-    if (!str) return NULL;
-
-    while (*str && !isalnum((unsigned char)*str))
-        str++;
-
-    return str;
-}
-
-/* Calculate clean name length after skipping prefix. */
-static inline size_t clean_name_length(const char* name) {
-    const char* clean = skip_dynamic_prefix(name);
-    if (!clean) return 0;
-    return strlen(clean);
-}
-
 /* Single-pass GNU-style argument detector with dynamic suffix. */
 static Argument* is_gnu_argument(ArgParser* parser, const char* arg_str, const char** value_ptr) {
     /* clear any existing errors at entry */
