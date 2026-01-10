@@ -840,7 +840,17 @@ static inline size_t clean_name_length(const char* name) {
 
 /* Single-pass GNU-style argument detector with dynamic suffix. */
 static Argument* is_gnu_argument(ArgParser* parser, const char* arg_str, const char** value_ptr) {
-    if (!parser || !arg_str || !value_ptr) return NULL;
+    /* clear any existing errors at entry */
+    argparse_error_clear();
+
+    if (!parser || !arg_str || !value_ptr) {
+        APE_SET(APE_INTERNAL, EINVAL, NULL, "Invalid parameters to GNU argument detection.");
+        return NULL;
+    }
+
+    *value_ptr = NULL;
+
+    /* get all arguments that might match */
     Argument* current = parser->arguments;
 
     while (current) {
@@ -852,12 +862,13 @@ static Argument* is_gnu_argument(ArgParser* parser, const char* arg_str, const c
 
         /* look for this argument's specific suffix char */
         const char* suffix_pos = strchr(arg_str, current->suffix);
+
         if (!suffix_pos) {
             current = current->next;
             continue;
         }
 
-        /* calculate total length before suffix */
+        /* compute total length before suffix */
         size_t total_len = (size_t)(suffix_pos - arg_str);
 
         if (total_len == 0) {
@@ -865,41 +876,34 @@ static Argument* is_gnu_argument(ArgParser* parser, const char* arg_str, const c
             continue;
         }
 
-        /* skip prefix to compare clean names */
-        const char* arg_clean = skip_dynamic_prefix(arg_str);
+        /* create argument name string for hash lookup */
+        char* arg_name = (char*)malloc(total_len + 1);
 
-        if (!arg_clean || arg_clean >= suffix_pos) {
+        if (!arg_name) {
+            APE_SET_MEMORY(NULL);
+            return NULL;
+        }
+
+        memcpy(arg_name, arg_str, total_len);
+        arg_name[total_len] = '\0';
+
+        /* fast hash table lookup for argument name */
+        Argument* found_arg = argparse_hash_find_argument(parser, arg_name);
+        free(arg_name);
+
+        /* if lookup failed, propagate error */
+        if (argparse_error_occurred())
+            return NULL;
+
+        /* check if it was found the right argument */
+        if (found_arg != current) {
             current = current->next;
             continue;
         }
 
-        /* calculate clean name length */
-        size_t clean_len = (size_t)(suffix_pos - arg_clean);
-
-        /* check against short name */
-        if (current->short_name) {
-            const char* short_clean = skip_dynamic_prefix(current->short_name);
-
-            if (short_clean && strlen(short_clean) == clean_len) {
-                if (strncmp(arg_clean, short_clean, clean_len) == 0) {
-                    *value_ptr = suffix_pos + 1;
-                    return current;
-                }
-            }
-        }
-
-        /* check against long name */
-        if (current->long_name) {
-            const char* long_clean = skip_dynamic_prefix(current->long_name);
-            if (long_clean && strlen(long_clean) == clean_len) {
-                if (strncmp(arg_clean, long_clean, clean_len) == 0) {
-                    *value_ptr = suffix_pos + 1;
-                    return current;
-                }
-            }
-        }
-
-        current = current->next;
+        /* all checks passed */
+        *value_ptr = suffix_pos + 1;
+        return current;
     }
 
     return NULL;
